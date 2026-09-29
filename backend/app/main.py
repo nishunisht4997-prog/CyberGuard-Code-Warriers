@@ -2190,7 +2190,10 @@ def get_media_severity(score):
 def analyze_image_content(image):
     """
     Prototype media analysis.
-    This is a heuristic CV layer, not a trained deepfake model.
+
+    Heuristic computer-vision analysis for detecting possible
+    image manipulation indicators. This is not a trained
+    deepfake detection model.
     """
 
     indicators = []
@@ -2198,20 +2201,30 @@ def analyze_image_content(image):
 
     height, width = image.shape[:2]
 
-    # Resolution check
+    # --------------------------------------------------
+    # 1. Resolution check
+    # --------------------------------------------------
     if width < 400 or height < 400:
         manipulation_score += 15
         indicators.append("Low image resolution")
 
-    # Blur detection
+    # --------------------------------------------------
+    # 2. Blur detection
+    # --------------------------------------------------
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    blur_value = cv2.Laplacian(gray, cv2.CV_64F).var()
+
+    blur_value = cv2.Laplacian(
+        gray,
+        cv2.CV_64F
+    ).var()
 
     if blur_value < 80:
         manipulation_score += 15
         indicators.append("Unusually blurred image")
 
-    # Very bright / very dark image
+    # --------------------------------------------------
+    # 3. Brightness analysis
+    # --------------------------------------------------
     brightness = float(np.mean(gray))
 
     if brightness < 35:
@@ -2222,23 +2235,85 @@ def analyze_image_content(image):
         manipulation_score += 10
         indicators.append("Very bright image")
 
+    # --------------------------------------------------
+    # 4. Contrast analysis
+    # --------------------------------------------------
+    contrast = float(np.std(gray))
+
+    if contrast < 25:
+        manipulation_score += 10
+        indicators.append("Unusually low image contrast")
+
+    # --------------------------------------------------
+    # 5. Edge analysis
+    # --------------------------------------------------
+    edges = cv2.Canny(gray, 100, 200)
+
+    edge_ratio = float(np.count_nonzero(edges)) / float(
+        edges.shape[0] * edges.shape[1]
+    )
+
+    if edge_ratio < 0.01:
+        manipulation_score += 10
+        indicators.append("Unusually low edge detail")
+
+    # --------------------------------------------------
+    # 6. Color distribution analysis
+    # --------------------------------------------------
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+
+    saturation = float(np.mean(hsv[:, :, 1]))
+
+    if saturation < 20:
+        manipulation_score += 5
+        indicators.append("Unusual color distribution")
+
+    # --------------------------------------------------
+    # 7. Image dimension anomaly
+    # --------------------------------------------------
+    aspect_ratio = width / max(height, 1)
+
+    if aspect_ratio > 3.5 or aspect_ratio < 0.28:
+        manipulation_score += 10
+        indicators.append("Unusual image aspect ratio")
+
+    # --------------------------------------------------
+    # Limit score
+    # --------------------------------------------------
     manipulation_score = min(manipulation_score, 100)
 
+    # --------------------------------------------------
+    # Authenticity score
+    # --------------------------------------------------
     authenticity_score = 100 - manipulation_score
 
+    # --------------------------------------------------
     # Prototype confidence
+    # --------------------------------------------------
     confidence = 70
 
     if width >= 800 and height >= 600:
         confidence += 10
 
+    if len(indicators) >= 3:
+        confidence += 5
+
     confidence = min(confidence, 95)
 
+    # --------------------------------------------------
+    # Risk score
+    # --------------------------------------------------
     risk_score = manipulation_score
+
     severity = get_media_severity(risk_score)
 
+    # --------------------------------------------------
+    # No detected indicators
+    # --------------------------------------------------
     if not indicators:
-        indicators.append("No obvious visual anomaly detected")
+        indicators.append(
+            "No obvious visual anomaly detected"
+        )
 
     return {
         "authenticity_score": authenticity_score,
@@ -2248,8 +2323,6 @@ def analyze_image_content(image):
         "risk_score": risk_score,
         "severity": severity,
     }
-
-
 @app.post("/analyze/image")
 async def analyze_image(
     file: UploadFile = File(...)
