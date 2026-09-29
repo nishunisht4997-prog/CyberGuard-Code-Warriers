@@ -16,6 +16,9 @@ import {
   Zap,
   Search,
   X,
+  Image as ImageIcon,
+  Video,
+  Upload,
 } from "lucide-react";
 
 import "./App.css";
@@ -168,6 +171,12 @@ function App() {
 
     qr: events.filter((e) =>
       ["QR_PHISHING", "SUSPICIOUS_QR", "QR_ANALYSIS", "QR_CONTENT"].includes(
+        e.threat_type,
+      ),
+    ).length,
+
+    media: events.filter((e) =>
+      ["DEEPFAKE_IMAGE", "DEEPFAKE_VIDEO", "MEDIA_ANALYSIS"].includes(
         e.threat_type,
       ),
     ).length,
@@ -364,6 +373,13 @@ function App() {
               count={moduleCounts.qr}
               onClick={() => navigate("qr")}
             />
+
+            <ModuleRow
+              icon={<ImageIcon />}
+              name="Deepfake Detection"
+              count={moduleCounts.media}
+              onClick={() => navigate("media")}
+            />
           </div>
         </section>
 
@@ -536,6 +552,13 @@ function App() {
           />
 
           <NavItem
+            icon={<ImageIcon />}
+            label="Media Detection"
+            active={page === "media"}
+            onClick={() => navigate("media")}
+          />
+
+          <NavItem
             icon={<LockKeyhole />}
             label="Account Security"
             active={page === "login"}
@@ -632,6 +655,14 @@ function App() {
 
         {page === "qr" && (
           <QRPage
+            onComplete={loadDashboard}
+            onBack={() => navigate("dashboard")}
+            showToast={showToast}
+          />
+        )}
+
+        {page === "media" && (
+          <MediaPage
             onComplete={loadDashboard}
             onBack={() => navigate("dashboard")}
             showToast={showToast}
@@ -1346,6 +1377,226 @@ function QRPage({ onComplete, onBack, showToast }) {
             : "SCAN QR CODE"}
         </button>
 
+      </form>
+    </AnalysisShell>
+  );
+}
+
+// ============================================================
+// IMAGE & VIDEO / DEEPFAKE DETECTION
+// ============================================================
+
+function MediaPage({ onComplete, onBack, showToast }) {
+  const [mode, setMode] = useState("image");
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState("");
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  function handleFile(event) {
+    const selected = event.target.files?.[0];
+
+    if (!selected) {
+      return;
+    }
+
+    const allowedImageTypes = [
+      "image/png",
+      "image/jpeg",
+      "image/jpg",
+      "image/webp",
+    ];
+
+    const allowedVideoTypes = [
+      "video/mp4",
+      "video/webm",
+      "video/quicktime",
+      "video/x-msvideo",
+    ];
+
+    const allowedTypes =
+      mode === "image" ? allowedImageTypes : allowedVideoTypes;
+
+    if (!allowedTypes.includes(selected.type)) {
+      showToast(
+        mode === "image"
+          ? "Please select a PNG, JPG, JPEG or WEBP image."
+          : "Please select an MP4, WEBM, MOV or AVI video.",
+      );
+      return;
+    }
+
+    setFile(selected);
+    setResult(null);
+
+    const previewUrl = URL.createObjectURL(selected);
+    setPreview(previewUrl);
+  }
+
+  function changeMode(newMode) {
+    setMode(newMode);
+    setFile(null);
+    setPreview("");
+    setResult(null);
+  }
+
+  async function analyzeMedia(event) {
+    event.preventDefault();
+
+    if (!file) {
+      showToast(
+        mode === "image"
+          ? "Please upload an image first."
+          : "Please upload a video first.",
+      );
+      return;
+    }
+
+    setLoading(true);
+    setResult(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const endpoint =
+        mode === "image"
+          ? "/analyze/image"
+          : "/analyze/video";
+
+      const response = await fetch(`${API}${endpoint}`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.detail || "Media analysis failed",
+        );
+      }
+
+      setResult(data);
+      onComplete();
+    } catch (error) {
+      console.error(error);
+      showToast(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <AnalysisShell
+      title="Deepfake & Media Detection"
+      subtitle="Upload an image or video to assess possible manipulation and authenticity."
+      icon={
+        mode === "image"
+          ? <ImageIcon size={28} />
+          : <Video size={28} />
+      }
+      result={result}
+      onBack={onBack}
+    >
+      <div className="media-mode-switch">
+        <button
+          type="button"
+          className={mode === "image" ? "active" : ""}
+          onClick={() => changeMode("image")}
+        >
+          <ImageIcon size={17} />
+          IMAGE
+        </button>
+
+        <button
+          type="button"
+          className={mode === "video" ? "active" : ""}
+          onClick={() => changeMode("video")}
+        >
+          <Video size={17} />
+          VIDEO
+        </button>
+      </div>
+
+      <form onSubmit={analyzeMedia}>
+        <div className="media-upload-box">
+          {mode === "image" ? (
+            <ImageIcon size={42} />
+          ) : (
+            <Video size={42} />
+          )}
+
+          <h3>
+            Upload {mode === "image" ? "Image" : "Video"}
+          </h3>
+
+          <p>
+            {mode === "image"
+              ? "Upload an image to check for possible manipulation."
+              : "Upload a video to check for possible manipulation."}
+          </p>
+
+          <input
+            type="file"
+            accept={
+              mode === "image"
+                ? "image/png,image/jpeg,image/jpg,image/webp"
+                : "video/mp4,video/webm,video/quicktime,video/x-msvideo"
+            }
+            onChange={handleFile}
+          />
+        </div>
+
+        {preview && file && (
+          <div className="media-preview">
+            {mode === "image" ? (
+              <img
+                src={preview}
+                alt="Selected media preview"
+              />
+            ) : (
+              <video
+                src={preview}
+                controls
+              />
+            )}
+
+            <span>{file.name}</span>
+          </div>
+        )}
+
+        <div className="helper-box">
+          <strong>What will we check?</strong>
+
+          <span>
+            🔹 Detect possible manipulation indicators
+            <br />
+            🔹 Calculate authenticity score
+            <br />
+            🔹 Calculate manipulation score
+            <br />
+            🔹 Estimate model confidence
+            <br />
+            🔹 Generate security recommendations
+          </span>
+        </div>
+
+        <button
+          className="analyze-btn"
+          type="submit"
+          disabled={loading || !file}
+        >
+          {mode === "image" ? (
+            <ImageIcon size={18} />
+          ) : (
+            <Video size={18} />
+          )}
+
+          {loading
+            ? "ANALYZING MEDIA..."
+            : `ANALYZE ${mode.toUpperCase()}`}
+        </button>
       </form>
     </AnalysisShell>
   );

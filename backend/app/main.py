@@ -7,6 +7,9 @@ from app.database import SessionLocal
 from urllib.parse import urlparse
 import cv2
 import numpy as np
+import tempfile
+import os
+import io
 
 
 app = FastAPI(
@@ -2161,3 +2164,559 @@ async def qr_detection(file: UploadFile = File(...)):
     finally:
 
         db.close()
+
+# ============================================================
+# MEDIA / IMAGE / VIDEO ANALYSIS
+# ============================================================
+
+def get_media_severity(score):
+    if score >= 81:
+        return "CRITICAL"
+    elif score >= 61:
+        return "HIGH"
+    elif score >= 41:
+        return "MEDIUM"
+    elif score >= 21:
+        return "LOW"
+    return "SAFE"
+
+
+def analyze_image_content(image):
+    """
+    Prototype media analysis.
+    This is a heuristic CV layer, not a trained deepfake model.
+    """
+
+    indicators = []
+    manipulation_score = 10
+
+    height, width = image.shape[:2]
+
+    # Resolution check
+    if width < 400 or height < 400:
+        manipulation_score += 15
+        indicators.append("Low image resolution")
+
+    # Blur detection
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    blur_value = cv2.Laplacian(gray, cv2.CV_64F).var()
+
+    if blur_value < 80:
+        manipulation_score += 15
+        indicators.append("Unusually blurred image")
+
+    # Very bright / very dark image
+    brightness = float(np.mean(gray))
+
+    if brightness < 35:
+        manipulation_score += 10
+        indicators.append("Very dark image")
+
+    elif brightness > 225:
+        manipulation_score += 10
+        indicators.append("Very bright image")
+
+    manipulation_score = min(manipulation_score, 100)
+
+    authenticity_score = 100 - manipulation_score
+
+    # Prototype confidence
+    confidence = 70
+
+    if width >= 800 and height >= 600:
+        confidence += 10
+
+    confidence = min(confidence, 95)
+
+    risk_score = manipulation_score
+    severity = get_media_severity(risk_score)
+
+    if not indicators:
+        indicators.append("No obvious visual anomaly detected")
+
+    return {
+        "authenticity_score": authenticity_score,
+        "manipulation_score": manipulation_score,
+        "model_confidence": confidence,
+        "indicators": indicators,
+        "risk_score": risk_score,
+        "severity": severity,
+    }
+
+
+@app.post("/analyze/image")
+async def analyze_image(
+    file: UploadFile = File(...)
+):
+    db = SessionLocal()
+
+    allowed_types = [
+        "image/jpeg",
+        "image/jpg",
+        "image/png",
+        "image/webp"
+    ]
+
+    if file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=400,
+            detail="Only JPG, PNG and WEBP images are allowed."
+        )
+
+    image_bytes = file.file.read()
+
+    if not image_bytes:
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded image is empty."
+        )
+
+    image_array = np.frombuffer(image_bytes, np.uint8)
+    image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
+
+    if image is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Unable to read the uploaded image."
+        )
+
+    analysis = analyze_image_content(image)
+
+    risk_score = analysis["risk_score"]
+    severity = analysis["severity"]
+
+    # 1. Main threat event
+    event_result = db.execute(
+        text("""
+            INSERT INTO threat_events
+            (
+                source,
+                threat_type,
+                risk_score,
+                severity,
+                status,
+                summary
+            )
+            VALUES
+            (
+                :source,
+                :threat_type,
+                :risk_score,
+                :severity,
+                'OPEN',
+                :summary
+            )
+        """),
+        {
+            "source": "IMAGE",
+            "threat_type": "MEDIA_MANIPULATION",
+            "risk_score": risk_score,
+            "severity": severity,
+            "summary": "Image media authenticity analysis completed."
+        }
+    )
+
+    db.commit()
+
+    event_id = event_result.lastrowid
+
+    # 2. Media analysis
+    db.execute(
+        text("""
+            INSERT INTO media_analysis
+            (
+                event_id,
+                file_name,
+                file_type,
+                authenticity_score,
+                manipulation_score,
+                model_confidence,
+                detected_indicators,
+                analysis_result
+            )
+            VALUES
+            (
+                :event_id,
+                :file_name,
+                :file_type,
+                :authenticity_score,
+                :manipulation_score,
+                :model_confidence,
+                :detected_indicators,
+                :analysis_result
+            )
+        """),
+        {
+            "event_id": event_id,
+            "file_name": file.filename,
+            "file_type": file.content_type,
+            "authenticity_score": analysis["authenticity_score"],
+            "manipulation_score": analysis["manipulation_score"],
+            "model_confidence": analysis["model_confidence"],
+            "detected_indicators": ", ".join(analysis["indicators"]),
+            "analysis_result": severity
+        }
+    )
+
+    # 3. Indicators
+    for indicator in analysis["indicators"]:
+        db.execute(
+            text("""
+                INSERT INTO threat_indicators
+                (
+                    event_id,
+                    indicator_type,
+                    indicator,
+                    severity,
+                    description
+                )
+                VALUES
+                (
+                    :event_id,
+                    'MEDIA',
+                    :indicator,
+                    :severity,
+                    :description
+                )
+            """),
+            {
+                "event_id": event_id,
+                "indicator": indicator,
+                "severity": severity,
+                "description": "Image analysis indicator."
+            }
+        )
+
+    # 4. Response
+    db.execute(
+        text("""
+            INSERT INTO response_actions
+            (
+                event_id,
+                recommended_action,
+                action_status,
+                action_reason
+            )
+            VALUES
+            (
+                :event_id,
+                :action,
+                'RECOMMENDED',
+                :reason
+            )
+        """),
+        {
+            "event_id": event_id,
+            "action": "Review image authenticity before trusting or sharing.",
+            "reason": "Media manipulation indicators were analyzed."
+        }
+    )
+
+    db.commit()
+
+    return {
+        "event_id": event_id,
+        "analysis": {
+            "threat_type": "MEDIA_MANIPULATION",
+            "risk_score": risk_score,
+            "severity": severity,
+            "authenticity_score": analysis["authenticity_score"],
+            "manipulation_score": analysis["manipulation_score"],
+            "model_confidence": analysis["model_confidence"],
+            "indicators": analysis["indicators"],
+            "actions": [
+                "Review image authenticity before trusting or sharing."
+            ]
+        }
+    }
+
+@app.post("/analyze/video")
+async def analyze_video(
+    file: UploadFile = File(...)
+):
+    db = SessionLocal()
+
+    allowed_types = [
+        "video/mp4",
+        "video/webm",
+        "video/quicktime"
+    ]
+
+    if file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=400,
+            detail="Only MP4, WEBM and MOV videos are allowed."
+        )
+
+    video_bytes = file.file.read()
+
+    if not video_bytes:
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded video is empty."
+        )
+
+    temp_path = None
+
+    try:
+        with tempfile.NamedTemporaryFile(
+            delete=False,
+            suffix=".mp4"
+        ) as temp_file:
+
+            temp_file.write(video_bytes)
+            temp_path = temp_file.name
+
+        capture = cv2.VideoCapture(temp_path)
+
+        if not capture.isOpened():
+            raise HTTPException(
+                status_code=400,
+                detail="Unable to read the uploaded video."
+            )
+
+        frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        fps = capture.get(cv2.CAP_PROP_FPS)
+
+        duration = 0
+
+        if fps and fps > 0:
+            duration = frame_count / fps
+
+        indicators = []
+
+        sampled_frames = 0
+        blur_values = []
+
+        # Analyze up to 8 frames
+        total_samples = min(8, max(frame_count, 1))
+
+        for i in range(total_samples):
+
+            position = int(
+                (i / total_samples) * max(frame_count - 1, 0)
+            )
+
+            capture.set(cv2.CAP_PROP_POS_FRAMES, position)
+
+            success, frame = capture.read()
+
+            if not success:
+                continue
+
+            sampled_frames += 1
+
+            gray = cv2.cvtColor(
+                frame,
+                cv2.COLOR_BGR2GRAY
+            )
+
+            blur_value = cv2.Laplacian(
+                gray,
+                cv2.CV_64F
+            ).var()
+
+            blur_values.append(blur_value)
+
+        capture.release()
+
+        if sampled_frames == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="No readable video frames found."
+            )
+
+        average_blur = sum(blur_values) / len(blur_values)
+
+        manipulation_score = 10
+
+        if average_blur < 80:
+            manipulation_score += 15
+            indicators.append(
+                "Low visual sharpness detected across sampled frames"
+            )
+
+        if duration > 300:
+            indicators.append(
+                "Long video requires deeper frame-by-frame analysis"
+            )
+
+        if sampled_frames < 3:
+            manipulation_score += 10
+            indicators.append(
+                "Limited readable frames available"
+            )
+
+        manipulation_score = min(
+            manipulation_score,
+            100
+        )
+
+        authenticity_score = 100 - manipulation_score
+
+        confidence = min(
+            60 + sampled_frames * 4,
+            90
+        )
+
+        severity = get_media_severity(
+            manipulation_score
+        )
+
+        if not indicators:
+            indicators.append(
+                "No obvious visual anomaly detected in sampled frames"
+            )
+
+        # Main event
+        event_result = db.execute(
+            text("""
+                INSERT INTO threat_events
+                (
+                    source,
+                    threat_type,
+                    risk_score,
+                    severity,
+                    status,
+                    summary
+                )
+                VALUES
+                (
+                    :source,
+                    :threat_type,
+                    :risk_score,
+                    :severity,
+                    'OPEN',
+                    :summary
+                )
+            """),
+            {
+                "source": "VIDEO",
+                "threat_type": "MEDIA_MANIPULATION",
+                "risk_score": manipulation_score,
+                "severity": severity,
+                "summary": "Video media authenticity analysis completed."
+            }
+        )
+
+        db.commit()
+
+        event_id = event_result.lastrowid
+
+        # Media record
+        db.execute(
+            text("""
+                INSERT INTO media_analysis
+                (
+                    event_id,
+                    file_name,
+                    file_type,
+                    authenticity_score,
+                    manipulation_score,
+                    model_confidence,
+                    detected_indicators,
+                    analysis_result
+                )
+                VALUES
+                (
+                    :event_id,
+                    :file_name,
+                    :file_type,
+                    :authenticity_score,
+                    :manipulation_score,
+                    :model_confidence,
+                    :detected_indicators,
+                    :analysis_result
+                )
+            """),
+            {
+                "event_id": event_id,
+                "file_name": file.filename,
+                "file_type": file.content_type,
+                "authenticity_score": authenticity_score,
+                "manipulation_score": manipulation_score,
+                "model_confidence": confidence,
+                "detected_indicators": ", ".join(indicators),
+                "analysis_result": severity
+            }
+        )
+
+        # Indicators
+        for indicator in indicators:
+            db.execute(
+                text("""
+                    INSERT INTO threat_indicators
+                    (
+                        event_id,
+                        indicator_type,
+                        indicator,
+                        severity,
+                        description
+                    )
+                    VALUES
+                    (
+                        :event_id,
+                        'MEDIA',
+                        :indicator,
+                        :severity,
+                        :description
+                    )
+                """),
+                {
+                    "event_id": event_id,
+                    "indicator": indicator,
+                    "severity": severity,
+                    "description": "Video analysis indicator."
+                }
+            )
+
+        # Recommended response
+        db.execute(
+            text("""
+                INSERT INTO response_actions
+                (
+                    event_id,
+                    recommended_action,
+                    action_status,
+                    action_reason
+                )
+                VALUES
+                (
+                    :event_id,
+                    :action,
+                    'RECOMMENDED',
+                    :reason
+                )
+            """),
+            {
+                "event_id": event_id,
+                "action": "Review video authenticity before trusting or sharing.",
+                "reason": "Video media indicators were analyzed."
+            }
+        )
+
+        db.commit()
+
+        return {
+            "event_id": event_id,
+            "analysis": {
+                "threat_type": "MEDIA_MANIPULATION",
+                "risk_score": manipulation_score,
+                "severity": severity,
+                "authenticity_score": authenticity_score,
+                "manipulation_score": manipulation_score,
+                "model_confidence": confidence,
+                "sampled_frames": sampled_frames,
+                "duration_seconds": round(duration, 2),
+                "indicators": indicators,
+                "actions": [
+                    "Review video authenticity before trusting or sharing."
+                ]
+            }
+        }
+
+    finally:
+
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
