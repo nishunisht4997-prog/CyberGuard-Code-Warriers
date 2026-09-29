@@ -23,7 +23,7 @@ import {
 
 import "./App.css";
 
-const API = "http://127.0.0.1:8000";
+const API = import.meta.env.DEV ? "http://127.0.0.1:8000" : "";
 
 
 function severityClass(severity) {

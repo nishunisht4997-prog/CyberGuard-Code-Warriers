@@ -10,6 +10,9 @@ import numpy as np
 import tempfile
 import os
 import io
+from pathlib import Path
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 
 app = FastAPI(
@@ -17,6 +20,9 @@ app = FastAPI(
     description="AI Powered Cyber Threat Detection and Response System",
     version="1.0.0"
 )
+
+BASE_DIR = Path(__file__).resolve().parents[2]
+FRONTEND_DIST = BASE_DIR / "frontend" / "dist"
 
 app.add_middleware(
     CORSMiddleware,
@@ -198,12 +204,12 @@ def analyze_phishing(data: PhishingRequest):
     }
 
 
-@app.get("/")
-def home():
-    return {
-        "message": "CYBERGUARD-X Backend is Running",
-        "status": "ONLINE"
-    }
+# @app.get("/")
+# def home():
+#     return {
+#         "message": "CYBERGUARD-X Backend is Running",
+#         "status": "ONLINE"
+#     }
 
 
 @app.get("/health")
@@ -2720,3 +2726,41 @@ async def analyze_video(
 
         if temp_path and os.path.exists(temp_path):
             os.remove(temp_path)
+
+# ==========================================================
+# SERVE REACT FRONTEND
+# ==========================================================
+
+if FRONTEND_DIST.exists():
+    app.mount(
+        "/assets",
+        StaticFiles(directory=FRONTEND_DIST / "assets"),
+        name="assets",
+    )
+
+
+@app.get("/", include_in_schema=False)
+async def serve_frontend():
+    index_file = FRONTEND_DIST / "index.html"
+
+    if index_file.exists():
+        return FileResponse(index_file)
+
+    return {
+        "message": "CYBERGUARD-X API is running",
+        "frontend": "Build not found"
+    }
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def serve_react_routes(full_path: str):
+    # Keep API routes from being handled by React
+    if full_path.startswith(("api/", "analyze/", "dashboard/", "events")):
+        raise HTTPException(status_code=404, detail="API endpoint not found")
+
+    index_file = FRONTEND_DIST / "index.html"
+
+    if index_file.exists():
+        return FileResponse(index_file)
+
+    raise HTTPException(status_code=404, detail="Frontend not found")
