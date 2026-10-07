@@ -307,9 +307,12 @@ function App() {
 
             <div
               className="top-user-avatar"
-              title="SOC Operator Terminal"
+              title="CYBERGUARD-X SOC Security Terminal"
+              onClick={() =>
+                showToast("CYBERGUARD-X SOC Security Terminal & Operator Active")
+              }
             >
-              MR
+              <Shield size={19} />
             </div>
           </div>
         </div>
