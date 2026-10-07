@@ -212,8 +212,11 @@ def analyze_phishing(data: PhishingRequest):
 
 @app.get("/health")
 def health_check():
+    from app.database import DB_STATUS, DB_ERROR
     return {
-        "status": "healthy"
+        "status": "healthy",
+        "db_status": DB_STATUS,
+        "db_error": DB_ERROR
     }
 
 

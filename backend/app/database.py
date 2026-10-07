@@ -12,7 +12,8 @@ DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = os.getenv("DB_PORT", "3306")
 DB_NAME = os.getenv("DB_NAME", "cyberguard")
 
-engine = None
+DB_STATUS = "SQLITE_DEFAULT"
+DB_ERROR = None
 
 if DB_USER and DB_PASSWORD and DB_HOST:
     try:
@@ -24,15 +25,18 @@ if DB_USER and DB_PASSWORD and DB_HOST:
             port=int(DB_PORT),
             database=DB_NAME,
         )
-        conn_args = {"connect_timeout": 8}
+        conn_args = {"connect_timeout": 12}
         if "tidbcloud" in DB_HOST.lower() or "aivencloud" in DB_HOST.lower() or os.getenv("DB_SSL", "").lower() == "true":
             conn_args["ssl"] = {"ssl_mode": "REQUIRED"}
         test_engine = create_engine(mysql_url, pool_pre_ping=True, connect_args=conn_args)
         with test_engine.connect() as conn:
             pass
         engine = test_engine
+        DB_STATUS = f"CONNECTED_MYSQL ({DB_HOST})"
         print(f"[*] Successfully connected to MySQL at {DB_HOST}")
     except Exception as e:
+        DB_STATUS = "MYSQL_FAILED_FALLBACK_SQLITE"
+        DB_ERROR = str(e)
         print(f"[!] MySQL connection failed ({e}). Falling back to local SQLite database.")
 
 if engine is None:
