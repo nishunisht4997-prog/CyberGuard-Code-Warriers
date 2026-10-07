@@ -1,5 +1,12 @@
-* {
+html {
   box-sizing: border-box;
+  overflow-x: hidden;
+  max-width: 100vw;
+  width: 100%;
+}
+
+*, *:before, *:after {
+  box-sizing: inherit;
 }
 
 :root {
@@ -18,7 +25,16 @@
 body {
   margin: 0;
   min-width: 320px;
+  max-width: 100vw;
+  width: 100%;
   background: #0c0a20;
+  overflow-x: hidden;
+  position: relative;
+}
+
+#root {
+  width: 100%;
+  max-width: 100vw;
   overflow-x: hidden;
 }
 
@@ -2251,20 +2267,23 @@ button:disabled {
 }
 
 /* Tablets & Mobile Drawer Switch (<= 992px) */
+/* Tablets & Mobile Drawer Switch (<= 992px) */
 @media (max-width: 992px) {
   .app {
     flex-direction: column;
     width: 100%;
     min-height: 100vh;
+    max-width: 100vw;
     overflow-x: hidden;
+    position: relative;
   }
 
   .mobile-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    height: 60px;
-    padding: 0 16px;
+    height: 58px;
+    padding: 0 14px;
     background: #0f0c29;
     border-bottom: 1px solid rgba(139, 92, 246, 0.22);
     position: sticky;
@@ -2273,6 +2292,9 @@ button:disabled {
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    width: 100%;
+    max-width: 100vw;
+    box-sizing: border-box;
   }
 
   .mobile-hamburger-btn {
@@ -2280,13 +2302,14 @@ button:disabled {
     border: 1px solid rgba(139, 92, 246, 0.3);
     color: #e2e8f0;
     border-radius: 10px;
-    width: 40px;
-    height: 40px;
+    width: 38px;
+    height: 38px;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     transition: all 0.2s ease;
+    flex-shrink: 0;
   }
 
   .mobile-hamburger-btn:hover {
@@ -2299,33 +2322,36 @@ button:disabled {
     align-items: center;
     gap: 10px;
     cursor: pointer;
+    min-width: 0;
   }
 
   .mobile-brand-icon {
-    width: 32px;
-    height: 32px;
-    border-radius: 9px;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
     background: linear-gradient(135deg, #7c3aed, #a855f7);
     color: #ffffff;
     display: flex;
     align-items: center;
     justify-content: center;
     box-shadow: 0 4px 12px rgba(168, 85, 247, 0.35);
+    flex-shrink: 0;
   }
 
   .mobile-brand h2 {
-    font-size: 14.5px;
+    font-size: 13.5px;
     font-weight: 800;
     margin: 0;
     color: #ffffff;
     letter-spacing: 0.5px;
     line-height: 1.1;
+    white-space: nowrap;
   }
 
   .mobile-brand span {
-    font-size: 9px;
+    font-size: 8.5px;
     color: #c084fc;
-    letter-spacing: 1.5px;
+    letter-spacing: 1.2px;
     text-transform: uppercase;
     font-weight: 700;
     display: block;
@@ -2334,15 +2360,16 @@ button:disabled {
   .mobile-header-status {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
     background: rgba(16, 185, 129, 0.12);
     border: 1px solid rgba(16, 185, 129, 0.35);
     color: #10b981;
     border-radius: 999px;
-    padding: 5px 12px;
-    font-size: 11px;
+    padding: 4px 10px;
+    font-size: 10.5px;
     font-weight: 700;
     letter-spacing: 0.5px;
+    flex-shrink: 0;
   }
 
   .mobile-backdrop {
@@ -2381,111 +2408,300 @@ button:disabled {
     max-height: none;
     overflow-y: visible;
     width: 100%;
+    max-width: 100vw;
+    box-sizing: border-box;
+    overflow-x: hidden;
+    min-width: 0;
+  }
+
+  .dashboard-wrapper {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
+  .tac-banner-card {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 18px 20px;
+    gap: 16px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .tac-left {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+  }
+
+  .tac-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    width: 100%;
+  }
+
+  .tac-btn-primary,
+  .tac-btn-secondary {
+    flex: 1 1 calc(50% - 10px);
+    min-width: 140px;
+    justify-content: center;
   }
 
   .content-grid {
     grid-template-columns: 1fr;
     gap: 18px;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .simulator-grid {
     grid-template-columns: 1fr;
+    width: 100%;
+    box-sizing: border-box;
   }
 }
 
 /* Mobile Devices & Smartphones (<= 768px) */
 @media (max-width: 768px) {
   .main {
-    padding: 16px 12px;
+    padding: 14px 12px;
+    width: 100%;
+    max-width: 100vw;
+    box-sizing: border-box;
+    overflow-x: hidden;
+  }
+
+  .dashboard-wrapper {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-x: hidden;
+    min-width: 0;
   }
 
   .top-global-bar {
     flex-direction: column;
     align-items: stretch;
-    gap: 12px;
-    margin-bottom: 18px;
+    gap: 10px;
+    margin-bottom: 16px;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .top-search-box {
     width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 8px 14px;
   }
 
   .top-bar-actions {
     width: 100%;
+    display: flex;
+    align-items: center;
     justify-content: space-between;
+    gap: 6px;
+    box-sizing: border-box;
+  }
+
+  .live-status-pill {
+    padding: 5px 12px;
+    font-size: 11px;
+    flex-shrink: 1;
+    min-width: 0;
+  }
+
+  .top-icon-btn {
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+  }
+
+  .top-user-avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    flex-shrink: 0;
   }
 
   .hero-header {
     flex-direction: column;
     align-items: stretch;
-    gap: 14px;
-    margin-bottom: 20px;
+    gap: 12px;
+    margin-bottom: 18px;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .hero-title {
-    font-size: 23px;
+    font-size: 22px;
+    word-break: break-word;
   }
 
   .datetime-card {
     width: 100%;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
     justify-content: space-between;
+    padding: 8px 14px;
+    gap: 8px;
   }
 
   .datetime-text {
-    text-align: left;
+    text-align: right;
+  }
+
+  .datetime-text strong {
+    font-size: 12px;
+  }
+
+  .datetime-text span {
+    font-size: 10.5px;
   }
 
   .stats-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
-    margin-bottom: 18px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 16px;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .stat-card {
-    padding: 14px 12px;
-    gap: 10px;
-    border-radius: 14px;
+    padding: 12px 10px;
+    gap: 8px;
+    border-radius: 12px;
+    min-width: 0;
+    overflow: hidden;
+    box-sizing: border-box;
   }
 
   .stat-icon {
-    width: 38px;
-    height: 38px;
-    border-radius: 10px;
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    flex-shrink: 0;
   }
 
   .stat-icon svg {
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
+  }
+
+  .stat-info {
+    min-width: 0;
+    flex: 1;
   }
 
   .stat-value {
-    font-size: 22px;
+    font-size: 19px;
+    line-height: 1.1;
   }
 
   .stat-title {
+    font-size: 11px;
+    margin-bottom: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .stat-badge {
+    font-size: 9px;
+    padding: 2px 4px;
+  }
+
+  /* Threat Analysis Center Banner Card on Mobile */
+  .tac-banner-card {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 16px 14px;
+    gap: 14px;
+    width: 100%;
+    box-sizing: border-box;
+    margin-bottom: 16px;
+    border-radius: 14px;
+  }
+
+  .tac-left {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .tac-wave {
+    display: none !important;
+  }
+
+  .tac-title {
+    font-size: 15px;
+  }
+
+  .tac-desc {
     font-size: 11.5px;
-    margin-bottom: 4px;
+    line-height: 1.3;
+  }
+
+  .tac-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .tac-btn-primary,
+  .tac-btn-secondary {
+    width: 100%;
+    justify-content: center;
+    padding: 9px 8px;
+    font-size: 11px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    box-sizing: border-box;
   }
 
   .panel {
-    padding: 16px;
+    padding: 14px 12px;
     border-radius: 14px;
+    width: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
   }
 
   .panel-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 10px;
+    gap: 8px;
+  }
+
+  .severity-row,
+  .module-row {
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .analysis-page {
     padding: 0;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .analysis-top-nav {
     flex-direction: column;
     align-items: stretch;
     gap: 10px;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .telemetry-status-pill {
@@ -2500,22 +2716,26 @@ button:disabled {
   .analysis-header-card {
     flex-direction: column;
     align-items: flex-start;
-    padding: 18px 16px;
-    gap: 14px;
+    padding: 16px 14px;
+    gap: 12px;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .analysis-main-title {
-    font-size: 20px;
+    font-size: 19px;
   }
 
   .analysis-main-subtitle {
-    font-size: 12.5px;
+    font-size: 12px;
   }
 
   .demo-presets-row {
     flex-direction: column;
     align-items: flex-start;
     gap: 8px;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .demo-presets-chips {
@@ -2523,27 +2743,35 @@ button:disabled {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
+    box-sizing: border-box;
   }
 
   .demo-preset-chip {
-    font-size: 11px;
+    font-size: 10.5px;
     padding: 6px 10px;
     flex-grow: 1;
     text-align: center;
+    box-sizing: border-box;
   }
 
   .forensic-capabilities-grid {
     grid-template-columns: 1fr;
     gap: 8px;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .meta-forensics-grid {
     grid-template-columns: 1fr;
     gap: 10px;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .forensics-subcard {
     padding: 12px;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .forensics-subcard-row {
@@ -2560,6 +2788,8 @@ button:disabled {
     flex-direction: column;
     align-items: flex-start;
     gap: 8px;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .risk-score {
@@ -2567,6 +2797,8 @@ button:disabled {
     align-items: center;
     text-align: center;
     gap: 14px;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .score-ring {
@@ -2577,30 +2809,36 @@ button:disabled {
     flex-direction: column;
     align-items: flex-start;
     gap: 6px;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .cyber-dropzone {
-    padding: 24px 16px;
+    padding: 22px 14px;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .dropzone-title {
-    font-size: 14px;
+    font-size: 13.5px;
   }
 
   .media-mode-switch-wrapper {
     width: 100%;
+    box-sizing: border-box;
   }
 
   .media-mode-switch {
     width: 100%;
     display: flex;
+    box-sizing: border-box;
   }
 
   .media-mode-switch button {
     flex: 1;
     justify-content: center;
-    font-size: 11.5px;
-    padding: 8px 10px;
+    font-size: 11px;
+    padding: 8px 8px;
   }
 
   .cyber-btn-primary,
@@ -2608,43 +2846,83 @@ button:disabled {
   .response-action {
     width: 100%;
     justify-content: center;
+    box-sizing: border-box;
   }
 
   .threat-table-wrapper {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
   }
 
   .threat-table {
-    min-width: 580px;
+    min-width: 520px;
   }
 
   .toast {
-    left: 16px;
-    right: 16px;
-    bottom: 16px;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
     max-width: none;
     text-align: center;
+    box-sizing: border-box;
   }
 }
 
-/* Extra Small Phones (<= 420px) */
+/* Extra Small Phones (<= 420px - e.g. 375px, 379px, 390px) */
 @media (max-width: 420px) {
-  .stats-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .hero-title {
-    font-size: 19px;
-  }
-
-  .stat-card {
+  .main {
     padding: 12px 10px;
   }
 
-  .stat-value {
-    font-size: 20px;
+  .mobile-header {
+    height: 54px;
+    padding: 0 10px;
+    gap: 6px;
+  }
+
+  .mobile-hamburger-btn {
+    width: 35px;
+    height: 35px;
+  }
+
+  .mobile-brand {
+    gap: 6px;
+  }
+
+  .mobile-brand-icon {
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
+  }
+
+  .mobile-brand h2 {
+    font-size: 12px;
+  }
+
+  .mobile-brand span {
+    font-size: 7.5px;
+    letter-spacing: 1px;
+  }
+
+  .mobile-header-status {
+    padding: 3px 7px;
+    font-size: 9.5px;
+    gap: 3px;
+  }
+
+  .hero-title {
+    font-size: 18px;
+  }
+
+  .hero-eyebrow {
+    font-size: 9.5px;
+  }
+
+  .hero-tagline {
+    font-size: 12px;
   }
 
   .top-search-box {
@@ -2653,6 +2931,80 @@ button:disabled {
 
   .top-search-box input {
     font-size: 12px;
+  }
+
+  .live-status-pill {
+    padding: 4px 8px;
+    font-size: 10px;
+  }
+
+  .top-icon-btn,
+  .top-user-avatar {
+    width: 32px;
+    height: 32px;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .stat-card {
+    padding: 10px 8px;
+    gap: 6px;
+  }
+
+  .stat-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+  }
+
+  .stat-value {
+    font-size: 17px;
+  }
+
+  .stat-title {
+    font-size: 10px;
+  }
+
+  .stat-badge {
+    display: none;
+  }
+
+  .tac-actions {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .tac-btn-primary,
+  .tac-btn-secondary {
+    padding: 9px 12px;
+    font-size: 11.5px;
+  }
+
+  .datetime-card {
+    padding: 6px 10px;
+  }
+
+  .datetime-text strong {
+    font-size: 11.5px;
+  }
+
+  .datetime-text span {
+    font-size: 9.5px;
+  }
+
+  .panel {
+    padding: 12px 10px;
+  }
+
+  .panel-header h3 {
+    font-size: 14px;
+  }
+
+  .panel-header span {
+    font-size: 11px;
   }
 }
 
