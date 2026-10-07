@@ -6,11 +6,11 @@ from sqlalchemy.orm import sessionmaker
 
 load_dotenv()
 
-DB_USER = os.getenv("DB_USER")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = os.getenv("DB_PORT", "3306")
-DB_NAME = os.getenv("DB_NAME", "cyberguard")
+DB_USER = os.getenv("DB_USER", "3jEjkiBaLbwsQLn.root")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "4UryLZ8cIO0WaiMY")
+DB_HOST = os.getenv("DB_HOST", "gateway01.ap-northeast-1.prod.aws.tidbcloud.com")
+DB_PORT = os.getenv("DB_PORT", "4000")
+DB_NAME = os.getenv("DB_NAME", "test")
 
 DB_STATUS = "SQLITE_DEFAULT"
 DB_ERROR = None
