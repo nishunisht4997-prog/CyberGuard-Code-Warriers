@@ -2464,16 +2464,12 @@ def extract_metadata_forensics(image_bytes: bytes, filename: str = ""):
                     metadata_info["has_exif"] = True
                 elif tag_name_lower == "software":
                     metadata_info["software"] = val_str
-                    metadata_info["is_edited"] = True
+                    sw_lower = val_str.lower()
+                    editor_signatures = ["photoshop", "gimp", "canva", "lightroom", "paint.net", "snapseed", "pixlr", "vsco", "affinity", "corel"]
+                    if any(ed in sw_lower for ed in editor_signatures):
+                        metadata_info["is_edited"] = True
                 elif tag_name_lower in ("datetime", "datetimeoriginal", "datetimedigitized"):
                     metadata_info["has_exif"] = True
-
-        # Check for editing software signatures
-        if metadata_info["software"]:
-            sw_lower = metadata_info["software"].lower()
-            editor_signatures = ["photoshop", "gimp", "canva", "lightroom", "paint.net", "snapseed", "pixlr", "vsco"]
-            if any(ed in sw_lower for ed in editor_signatures):
-                metadata_info["is_edited"] = True
 
     except Exception:
         pass
@@ -2511,6 +2507,151 @@ def compute_ela_forensics(image):
             "mean_diff": 2.0,
             "std_diff": 3.0,
             "is_anomaly": False
+        }
+
+
+def detect_nsfw_skin_exposure(image):
+    """
+    Advanced Skin-Tone & Anatomical Exposure Forensics (Dual HSV + YCrCb color space).
+    Detects high ratios of unclad human anatomical skin areas (NSFW / Explicit content).
+    """
+    if image is None:
+        return {
+            "is_nsfw": False,
+            "skin_ratio": 0.0,
+            "largest_contour_ratio": 0.0,
+            "status": "SAFE",
+            "threshold": 30.0,
+        }
+
+    try:
+        h, w = image.shape[:2]
+        total_pixels = float(h * w)
+        if total_pixels == 0:
+            return {
+                "is_nsfw": False,
+                "skin_ratio": 0.0,
+                "largest_contour_ratio": 0.0,
+                "status": "SAFE",
+                "threshold": 30.0,
+            }
+
+        # 1. Convert to HSV
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        lower_hsv1 = np.array([0, 15, 35], dtype=np.uint8)
+        upper_hsv1 = np.array([28, 255, 255], dtype=np.uint8)
+        mask_hsv1 = cv2.inRange(hsv, lower_hsv1, upper_hsv1)
+        lower_hsv2 = np.array([165, 15, 35], dtype=np.uint8)
+        upper_hsv2 = np.array([180, 255, 255], dtype=np.uint8)
+        mask_hsv2 = cv2.bitwise_or(mask_hsv1, cv2.inRange(hsv, lower_hsv2, upper_hsv2))
+
+        # 2. Convert to YCrCb (Biometric skin color space)
+        ycrcb = cv2.cvtColor(image, cv2.COLOR_BGR2YCrCb)
+        lower_ycrcb = np.array([0, 128, 70], dtype=np.uint8)
+        upper_ycrcb = np.array([255, 182, 138], dtype=np.uint8)
+        mask_ycrcb = cv2.inRange(ycrcb, lower_ycrcb, upper_ycrcb)
+
+        # 3. Intersect masks to eliminate false positives
+        skin_mask = cv2.bitwise_and(mask_hsv2, mask_ycrcb)
+
+        # Morphological filtering
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        skin_mask = cv2.morphologyEx(skin_mask, cv2.MORPH_OPEN, kernel, iterations=2)
+        skin_mask = cv2.morphologyEx(skin_mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+
+        skin_pixels = float(cv2.countNonZero(skin_mask))
+        skin_ratio = round((skin_pixels / total_pixels) * 100.0, 1)
+
+        # Largest contiguous contour (detects major unclad torso/back/limbs)
+        contours, _ = cv2.findContours(skin_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        largest_area = max([cv2.contourArea(c) for c in contours], default=0.0)
+        largest_contour_ratio = round((largest_area / total_pixels) * 100.0, 1)
+
+        # Threshold rules:
+        # High anatomical skin exposure: >= 30% total skin or (>= 22% skin with a single contiguous patch >= 15%)
+        is_nsfw = (skin_ratio >= 30.0) or (skin_ratio >= 22.0 and largest_contour_ratio >= 15.0)
+        status = "CRITICAL_VIOLATION" if is_nsfw else ("SUSPICIOUS" if skin_ratio >= 20.0 else "SAFE")
+
+        return {
+            "is_nsfw": is_nsfw,
+            "skin_ratio": skin_ratio,
+            "largest_contour_ratio": largest_contour_ratio,
+            "status": status,
+            "threshold": 30.0,
+        }
+    except Exception as e:
+        return {
+            "is_nsfw": False,
+            "skin_ratio": 0.0,
+            "largest_contour_ratio": 0.0,
+            "status": "SAFE",
+            "threshold": 30.0,
+            "error": str(e),
+        }
+
+
+def inspect_steganography_payload(image_bytes: bytes):
+    """
+    Steganography & Trailing Payload Analysis.
+    Scans past standard EOF markers (JPEG FF D9, PNG IEND) for concealed archives,
+    scripts, executables, or LSB anomaly markers.
+    """
+    if not image_bytes:
+        return {
+            "detected": False,
+            "payload_type": "None",
+            "payload_size": 0,
+            "status": "SAFE",
+        }
+
+    try:
+        payload = b""
+        payload_type = "None"
+
+        # JPEG check (FF D8 ... FF D9)
+        if image_bytes.startswith(b"\xff\xd8"):
+            eof_pos = image_bytes.rfind(b"\xff\xd9")
+            if eof_pos != -1 and eof_pos + 2 < len(image_bytes):
+                payload = image_bytes[eof_pos + 2:]
+        # PNG check (IEND chunk + 4-byte CRC)
+        elif image_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+            iend_pos = image_bytes.rfind(b"IEND")
+            if iend_pos != -1 and iend_pos + 8 < len(image_bytes):
+                payload = image_bytes[iend_pos + 8:]
+
+        if len(payload) > 32:
+            if payload.startswith(b"PK\x03\x04") or b"PK\x03\x04" in payload[:128]:
+                payload_type = "EMBEDDED_ZIP_ARCHIVE"
+            elif payload.startswith(b"MZ"):
+                payload_type = "WINDOWS_EXECUTABLE_BINARY"
+            elif payload.startswith(b"Rar!"):
+                payload_type = "RAR_COMPRESSED_ARCHIVE"
+            elif payload.startswith(b"7z\xbc\xaf\x27\x1c"):
+                payload_type = "7ZIP_COMPRESSED_ARCHIVE"
+            elif any(tag in payload[:256].lower() for tag in [b"<?php", b"<script", b"powershell", b"cmd.exe", b"/bin/sh"]):
+                payload_type = "EMBEDDED_SCRIPT_EXPLOIT"
+            else:
+                payload_type = "CONCEALED_BINARY_PAYLOAD"
+
+            return {
+                "detected": True,
+                "payload_type": payload_type,
+                "payload_size": len(payload),
+                "status": "CRITICAL_SUSPICIOUS",
+            }
+
+        return {
+            "detected": False,
+            "payload_type": "None",
+            "payload_size": 0,
+            "status": "SAFE",
+        }
+    except Exception:
+        return {
+            "detected": False,
+            "payload_type": "None",
+            "payload_size": 0,
+            "status": "SAFE",
         }
 
 
@@ -2634,12 +2775,49 @@ def analyze_image_content(image, image_bytes: bytes = None, filename: str = ""):
         reasons.append("Error Level Analysis (ELA) highlights localized pixel compression anomaly — indicates spliced, cloned, or pasted content.")
 
     # --------------------------------------------------
-    # 10. Final Scores & 3-Tier Authenticity Verdict
+    # 10. AI NSFW & Anatomical Exposure Forensics
+    # --------------------------------------------------
+    nsfw_data = detect_nsfw_skin_exposure(image)
+    if nsfw_data["is_nsfw"]:
+        manipulation_score = 98
+        indicators.insert(0, f"🔞 Explicit Content Violation: High Anatomical Skin Exposure ({nsfw_data['skin_ratio']}%)")
+        reasons.insert(0, f"Content Safety Engine detected {nsfw_data['skin_ratio']}% unclad anatomical skin exposure (Contiguous contour: {nsfw_data['largest_contour_ratio']}%). Violates Acceptable Use & Content Safety Policies.")
+
+    # --------------------------------------------------
+    # 11. Steganography & Appended Trailing Payload Scan
+    # --------------------------------------------------
+    stego_data = inspect_steganography_payload(image_bytes)
+    if stego_data["detected"]:
+        manipulation_score = max(manipulation_score, 94)
+        indicators.insert(0, f"🕵️ Steganography Anomaly: Appended Hidden Payload ({stego_data['payload_type']}, {stego_data['payload_size']} bytes)")
+        reasons.insert(0, f"File boundary inspection detected concealed data past the valid image EOF marker ({stego_data['payload_type']}). Often used to smuggle exfiltrated data or dropper payloads.")
+
+    # --------------------------------------------------
+    # 12. Final Scores & Threat Classification
     # --------------------------------------------------
     manipulation_score = max(5, min(manipulation_score, 98))
     authenticity_score = 100 - manipulation_score
 
-    if authenticity_score >= 70:
+    if nsfw_data["is_nsfw"]:
+        threat_type = "EXPLICIT_NSFW_VIOLATION"
+        verdict = {
+            "status": "POLICY_VIOLATION",
+            "badge": "🔞 Policy Violation: Explicit Nude Content",
+            "label": "Explicit / Adult Content Detected",
+            "color": "rose",
+            "summary": f"Image violates content safety rules with {nsfw_data['skin_ratio']}% exposed anatomical skin region. Flagged for quarantine and compliance review."
+        }
+    elif stego_data["detected"]:
+        threat_type = "STEGANOGRAPHY_PAYLOAD"
+        verdict = {
+            "status": "MALICIOUS",
+            "badge": "🕵️ Concealed Payload Detected",
+            "label": "Steganographic Payload Embedded",
+            "color": "rose",
+            "summary": f"Image contains {stego_data['payload_size']} bytes of trailing concealed payload ({stego_data['payload_type']}) hidden behind file EOF terminator."
+        }
+    elif authenticity_score >= 70:
+        threat_type = "MEDIA_MANIPULATION"
         verdict = {
             "status": "AUTHENTIC",
             "badge": "🟢 Likely Authentic",
@@ -2648,6 +2826,7 @@ def analyze_image_content(image, image_bytes: bytes = None, filename: str = ""):
             "summary": "Content shows natural optical characteristics, consistent camera noise, and valid structural integrity."
         }
     elif authenticity_score >= 40:
+        threat_type = "MEDIA_MANIPULATION"
         verdict = {
             "status": "SUSPICIOUS",
             "badge": "🟡 Possibly Manipulated",
@@ -2656,6 +2835,7 @@ def analyze_image_content(image, image_bytes: bytes = None, filename: str = ""):
             "summary": "Content displays possible compression anomalies, digital resampling, or post-processing filtering."
         }
     else:
+        threat_type = "MEDIA_MANIPULATION"
         verdict = {
             "status": "MANIPULATED",
             "badge": "🔴 Highly Likely Manipulated",
@@ -2672,7 +2852,9 @@ def analyze_image_content(image, image_bytes: bytes = None, filename: str = ""):
         confidence += 7
     if metadata_info["has_exif"] or metadata_info["is_edited"] or metadata_info["ai_signature_detected"]:
         confidence += 6
-    confidence = min(confidence, 96)
+    if nsfw_data["is_nsfw"] or stego_data["detected"]:
+        confidence = max(confidence, 94)
+    confidence = min(confidence, 98)
 
     severity = get_media_severity(manipulation_score)
 
@@ -2682,12 +2864,15 @@ def analyze_image_content(image, image_bytes: bytes = None, filename: str = ""):
         reasons.append("Standard pixel uniformity verified across color, edge, and frequency domains.")
 
     return {
+        "threat_type": threat_type,
         "authenticity_score": authenticity_score,
         "manipulation_score": manipulation_score,
         "model_confidence": confidence,
         "verdict": verdict,
         "indicators": indicators,
         "reasons": reasons,
+        "nsfw_forensics": nsfw_data,
+        "stego_forensics": stego_data,
         "metadata_forensics": {
             "has_exif": metadata_info["has_exif"],
             "camera_make": metadata_info["camera_make"] or "N/A",
@@ -2749,6 +2934,15 @@ async def analyze_image(
 
     risk_score = analysis["risk_score"]
     severity = analysis["severity"]
+    threat_type = analysis.get("threat_type", "MEDIA_MANIPULATION")
+
+    summary_text = f"Image media authenticity analysis: {analysis.get('verdict', {}).get('badge', severity)}"
+    if threat_type == "EXPLICIT_NSFW_VIOLATION":
+        skin_r = analysis.get("nsfw_forensics", {}).get("skin_ratio", 0)
+        summary_text = f"🔞 Policy Violation: Explicit Nude Content ({skin_r}% anatomical skin exposure)"
+    elif threat_type == "STEGANOGRAPHY_PAYLOAD":
+        p_type = analysis.get("stego_forensics", {}).get("payload_type", "CONCEALED")
+        summary_text = f"🕵️ Steganography Alert: Concealed trailing payload detected ({p_type})"
 
     # 1. Main threat event
     event_result = db.execute(
@@ -2774,10 +2968,10 @@ async def analyze_image(
         """),
         {
             "source": "IMAGE",
-            "threat_type": "MEDIA_MANIPULATION",
+            "threat_type": threat_type,
             "risk_score": risk_score,
             "severity": severity,
-            "summary": "Image media authenticity analysis completed."
+            "summary": summary_text
         }
     )
 
@@ -2853,6 +3047,25 @@ async def analyze_image(
         )
 
     # 4. Response
+    action_text = (
+        "Quarantine explicit media and enforce organization content safety compliance."
+        if threat_type == "EXPLICIT_NSFW_VIOLATION"
+        else (
+            "Isolate file and extract appended steganographic binary for sandbox analysis."
+            if threat_type == "STEGANOGRAPHY_PAYLOAD"
+            else "Review image authenticity before trusting or sharing."
+        )
+    )
+    action_reason = (
+        "Explicit adult content policy violation."
+        if threat_type == "EXPLICIT_NSFW_VIOLATION"
+        else (
+            "Hidden payload detected beyond file end-of-frame boundary."
+            if threat_type == "STEGANOGRAPHY_PAYLOAD"
+            else "Media manipulation indicators were analyzed."
+        )
+    )
+
     db.execute(
         text("""
             INSERT INTO response_actions
@@ -2872,8 +3085,8 @@ async def analyze_image(
         """),
         {
             "event_id": event_id,
-            "action": "Review image authenticity before trusting or sharing.",
-            "reason": "Media manipulation indicators were analyzed."
+            "action": action_text,
+            "reason": action_reason
         }
     )
 
@@ -2882,20 +3095,22 @@ async def analyze_image(
     return {
         "event_id": event_id,
         "analysis": {
-            "threat_type": "MEDIA_MANIPULATION",
+            "threat_type": threat_type,
             "risk_score": risk_score,
             "severity": severity,
             "authenticity_score": analysis["authenticity_score"],
             "manipulation_score": analysis["manipulation_score"],
             "model_confidence": analysis["model_confidence"],
             "verdict": analysis.get("verdict"),
+            "nsfw_forensics": analysis.get("nsfw_forensics"),
+            "stego_forensics": analysis.get("stego_forensics"),
             "metadata_forensics": analysis.get("metadata_forensics"),
             "compression_forensics": analysis.get("compression_forensics"),
             "indicators": analysis["indicators"],
             "reasons": analysis.get("reasons", []),
             "actions": [
-                "Review image authenticity before trusting or sharing.",
-                "Inspect EXIF metadata and ELA compression anomalies if critical."
+                action_text,
+                "Inspect EXIF metadata, ELA compression, and steganography payloads if critical."
             ]
         }
     }

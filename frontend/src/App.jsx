@@ -27,6 +27,8 @@ import {
   Camera,
   Layers,
   Menu,
+  Binary,
+  EyeOff,
 } from "lucide-react";
 
 import "./App.css";
@@ -1983,10 +1985,22 @@ function MediaPage({ onComplete, onBack, showToast }) {
 
   const demoImages = [
     {
+      label: "🔞 Explicit Adult / NSFW Demo",
+      path: "/samples/sample_explicit_nsfw.jpg",
+      filename: "sample_explicit_nsfw.jpg",
+      type: "critical",
+    },
+    {
+      label: "🕵️ Steganography Hidden Payload Demo",
+      path: "/samples/sample_stego_payload.jpg",
+      filename: "sample_stego_payload.jpg",
+      type: "critical",
+    },
+    {
       label: "🎭 Synthetic AI Deepfake",
       path: "/samples/media_deepfake_sample.png",
       filename: "ai_deepfake_profile.png",
-      type: "critical",
+      type: "high",
     },
     {
       label: "📄 Altered ID Document",
@@ -1996,8 +2010,8 @@ function MediaPage({ onComplete, onBack, showToast }) {
     },
     {
       label: "🛡️ Authentic Original Media",
-      path: "/samples/media_safe_sample.png",
-      filename: "authentic_source_image.png",
+      path: "/samples/media_safe_sample.jpg",
+      filename: "authentic_source_image.jpg",
       type: "safe",
     },
   ];
@@ -2274,22 +2288,45 @@ function MediaPage({ onComplete, onBack, showToast }) {
 
         {/* Forensic Capabilities Checklist */}
         <div className="forensic-capabilities-grid">
-          <div className="cap-badge">
-            <Activity size={14} className="cap-icon cyan" />
-            <span>Frequency Artifact Analysis</span>
-          </div>
-          <div className="cap-badge">
-            <Shield size={14} className="cap-icon purple" />
-            <span>Error Level Analysis (ELA)</span>
-          </div>
-          <div className="cap-badge">
-            <CheckCircle size={14} className="cap-icon amber" />
-            <span>Facial Landmark Symmetry</span>
-          </div>
-          <div className="cap-badge">
-            <Zap size={14} className="cap-icon red" />
-            <span>Synthetic GAN Signatures</span>
-          </div>
+          {mode === "image" ? (
+            <>
+              <div className="cap-badge">
+                <ShieldAlert size={14} className="cap-icon red" />
+                <span>Anatomical Exposure / NSFW</span>
+              </div>
+              <div className="cap-badge">
+                <Binary size={14} className="cap-icon purple" />
+                <span>Steganography & EOF Payloads</span>
+              </div>
+              <div className="cap-badge">
+                <Layers size={14} className="cap-icon cyan" />
+                <span>Error Level Analysis (ELA)</span>
+              </div>
+              <div className="cap-badge">
+                <Camera size={14} className="cap-icon amber" />
+                <span>EXIF Hardware Provenance</span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="cap-badge">
+                <Activity size={14} className="cap-icon cyan" />
+                <span>Temporal Motion Flow Jitter</span>
+              </div>
+              <div className="cap-badge">
+                <Video size={14} className="cap-icon purple" />
+                <span>Keyframe Splicing Detector</span>
+              </div>
+              <div className="cap-badge">
+                <Shield size={14} className="cap-icon amber" />
+                <span>Facial Symmetry & Blending</span>
+              </div>
+              <div className="cap-badge">
+                <Zap size={14} className="cap-icon red" />
+                <span>Temporal Artifact Resampling</span>
+              </div>
+            </>
+          )}
         </div>
 
         <button
@@ -2574,6 +2611,74 @@ function ResultPanel({ result }) {
                 </strong>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {(analysis.nsfw_forensics || analysis.stego_forensics) && (
+        <div className="result-section">
+          <h4>Content Safety & Steganography Forensics</h4>
+          <div className="meta-forensics-grid">
+            {analysis.nsfw_forensics && (
+              <div className="forensics-subcard">
+                <div className="forensics-subcard-title">
+                  <ShieldAlert size={14} /> Anatomical Exposure & Content Safety
+                </div>
+                <div className="forensics-subcard-row">
+                  <span>Safety Status:</span>
+                  <strong className={analysis.nsfw_forensics.is_nsfw ? "text-rose" : "text-emerald"}>
+                    {analysis.nsfw_forensics.is_nsfw ? "POLICY VIOLATION (EXPLICIT)" : "COMPLIANT / SAFE"}
+                  </strong>
+                </div>
+                <div className="forensics-subcard-row">
+                  <span>Skin Exposure Ratio:</span>
+                  <strong className={analysis.nsfw_forensics.skin_ratio >= 30 ? "text-rose" : "text-emerald"}>
+                    {analysis.nsfw_forensics.skin_ratio}% (Policy Threshold: {analysis.nsfw_forensics.threshold}%)
+                  </strong>
+                </div>
+                <div className="forensics-subcard-row">
+                  <span>Contiguous Anatomical Patch:</span>
+                  <strong className={analysis.nsfw_forensics.largest_contour_ratio >= 15 ? "text-rose" : ""}>
+                    {analysis.nsfw_forensics.largest_contour_ratio}%
+                  </strong>
+                </div>
+                <div className="forensics-subcard-row">
+                  <span>Engine Verdict:</span>
+                  <strong className={analysis.nsfw_forensics.is_nsfw ? "text-rose" : "text-emerald"}>
+                    {analysis.nsfw_forensics.is_nsfw ? "Unclad anatomical skin density flagged" : "Within acceptable non-explicit threshold"}
+                  </strong>
+                </div>
+              </div>
+            )}
+            {analysis.stego_forensics && (
+              <div className="forensics-subcard">
+                <div className="forensics-subcard-title">
+                  <Binary size={14} /> Steganography & Appended Data
+                </div>
+                <div className="forensics-subcard-row">
+                  <span>File Boundary Integrity:</span>
+                  <strong className={analysis.stego_forensics.detected ? "text-rose" : "text-emerald"}>
+                    {analysis.stego_forensics.detected ? "CONCEALED DATA FOUND" : "VERIFIED CLEAN EOF"}
+                  </strong>
+                </div>
+                <div className="forensics-subcard-row">
+                  <span>Payload Type:</span>
+                  <strong className={analysis.stego_forensics.detected ? "text-rose" : ""}>
+                    {analysis.stego_forensics.payload_type}
+                  </strong>
+                </div>
+                <div className="forensics-subcard-row">
+                  <span>Appended Byte Size:</span>
+                  <strong>{analysis.stego_forensics.payload_size} bytes</strong>
+                </div>
+                <div className="forensics-subcard-row">
+                  <span>Marker Status:</span>
+                  <strong className={analysis.stego_forensics.detected ? "text-rose" : "text-emerald"}>
+                    {analysis.stego_forensics.detected ? "Post-EOF anomaly detected past marker" : "Standard end-of-frame terminator"}
+                  </strong>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
