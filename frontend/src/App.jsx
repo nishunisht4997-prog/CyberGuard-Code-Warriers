@@ -1941,7 +1941,7 @@ function MediaPage({ onComplete, onBack, showToast }) {
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef(null);
 
-  const demoMedia = [
+  const demoImages = [
     {
       label: "🎭 Synthetic AI Deepfake",
       path: "/samples/media_deepfake_sample.png",
@@ -1961,6 +1961,29 @@ function MediaPage({ onComplete, onBack, showToast }) {
       type: "safe",
     },
   ];
+
+  const demoVideos = [
+    {
+      label: "🎭 AI Deepfake Video",
+      path: "/samples/sample_deepfake_video.mp4",
+      filename: "sample_deepfake_video.mp4",
+      type: "critical",
+    },
+    {
+      label: "⚠️ Spliced Video Clip",
+      path: "/samples/sample_spliced_video.mp4",
+      filename: "sample_spliced_video.mp4",
+      type: "high",
+    },
+    {
+      label: "🛡️ Authentic HD Video",
+      path: "/samples/sample_authentic_video.mp4",
+      filename: "sample_authentic_video.mp4",
+      type: "safe",
+    },
+  ];
+
+  const demoMedia = mode === "image" ? demoImages : demoVideos;
 
   function processFile(selected) {
     if (!selected) return;
@@ -2075,10 +2098,10 @@ function MediaPage({ onComplete, onBack, showToast }) {
   async function handleDemoClick(demo) {
     try {
       setLoading(true);
-      if (mode !== "image") setMode("image");
       const res = await fetch(demo.path);
       const blob = await res.blob();
-      const sampleFile = new File([blob], demo.filename, { type: "image/png" });
+      const mime = mode === "video" ? "video/mp4" : "image/png";
+      const sampleFile = new File([blob], demo.filename, { type: mime });
       setFile(sampleFile);
       setPreview(URL.createObjectURL(blob));
       await analyzeMedia(sampleFile);
@@ -2452,6 +2475,65 @@ function ResultPanel({ result }) {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {analysis.video_forensics && (
+        <div className="result-section">
+          <h4>Video Stream & Temporal Deepfake Forensics</h4>
+          <div className="meta-forensics-grid">
+            <div className="forensics-subcard">
+              <div className="forensics-subcard-title">
+                <Video size={14} /> Video Stream Specifications
+              </div>
+              <div className="forensics-subcard-row">
+                <span>Resolution:</span>
+                <strong>{analysis.video_forensics.resolution}</strong>
+              </div>
+              <div className="forensics-subcard-row">
+                <span>Frame Rate & Timeline:</span>
+                <strong>{analysis.video_forensics.fps} FPS ({analysis.video_forensics.duration_seconds}s)</strong>
+              </div>
+              <div className="forensics-subcard-row">
+                <span>Keyframes Inspected:</span>
+                <strong>{analysis.video_forensics.sampled_frames} of {analysis.video_forensics.total_frames} frames</strong>
+              </div>
+              <div className="forensics-subcard-row">
+                <span>Bitrate:</span>
+                <strong>{analysis.video_forensics.bitrate_kbps ? `${analysis.video_forensics.bitrate_kbps} kbps` : "N/A"}</strong>
+              </div>
+            </div>
+
+            <div className="forensics-subcard">
+              <div className="forensics-subcard-title">
+                <Activity size={14} /> Temporal Motion & Continuity
+              </div>
+              <div className="forensics-subcard-row">
+                <span>Temporal Motion Flow:</span>
+                <strong className={analysis.video_forensics.temporal_flow === "NATURAL_CONTINUOUS" ? "text-emerald" : "text-rose"}>
+                  {analysis.video_forensics.temporal_flow === "NATURAL_CONTINUOUS" ? "NATURAL & CONTINUOUS" : "IRREGULAR JITTER / FLICKER"}
+                </strong>
+              </div>
+              <div className="forensics-subcard-row">
+                <span>Motion Jitter Index (StdDev):</span>
+                <strong className={analysis.video_forensics.temporal_jitter_std <= 2.5 ? "text-emerald" : "text-rose"}>
+                  {analysis.video_forensics.temporal_jitter_std}
+                </strong>
+              </div>
+              <div className="forensics-subcard-row">
+                <span>Optical Sharpness Variance:</span>
+                <strong className={analysis.video_forensics.blur_stability === "STABLE" ? "text-emerald" : "text-rose"}>
+                  {analysis.video_forensics.blur_stability} (Score: {analysis.video_forensics.avg_blur})
+                </strong>
+              </div>
+              <div className="forensics-subcard-row">
+                <span>Splicing Cut Anomaly:</span>
+                <strong className={analysis.video_forensics.splicing_detected ? "text-rose" : "text-emerald"}>
+                  {analysis.video_forensics.splicing_detected ? "DETECTED (SEAM / CUT)" : "NONE (SEAMLESS)"}
+                </strong>
+              </div>
+            </div>
           </div>
         </div>
       )}

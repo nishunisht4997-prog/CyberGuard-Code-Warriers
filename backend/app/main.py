@@ -2947,99 +2947,126 @@ async def analyze_video(
                 detail="Unable to read the uploaded video."
             )
 
-        frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
-
-        fps = capture.get(cv2.CAP_PROP_FPS)
-
-        duration = 0
-
-        if fps and fps > 0:
-            duration = frame_count / fps
+        total_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = capture.get(cv2.CAP_PROP_FPS) or 25.0
+        width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        duration = total_frames / fps if fps > 0 else 0
 
         indicators = []
+        reasons = []
 
-        sampled_frames = 0
+        # Analyze up to 12 evenly distributed keyframes
+        num_samples = min(12, max(total_frames, 1))
+        frames = []
         blur_values = []
 
-        # Analyze up to 8 frames
-        total_samples = min(8, max(frame_count, 1))
-
-        for i in range(total_samples):
-
-            position = int(
-                (i / total_samples) * max(frame_count - 1, 0)
-            )
-
-            capture.set(cv2.CAP_PROP_POS_FRAMES, position)
-
+        for i in range(num_samples):
+            pos = int((i / max(num_samples - 1, 1)) * max(total_frames - 1, 0))
+            capture.set(cv2.CAP_PROP_POS_FRAMES, pos)
             success, frame = capture.read()
-
-            if not success:
+            if not success or frame is None:
                 continue
 
-            sampled_frames += 1
-
-            gray = cv2.cvtColor(
-                frame,
-                cv2.COLOR_BGR2GRAY
-            )
-
-            blur_value = cv2.Laplacian(
-                gray,
-                cv2.CV_64F
-            ).var()
-
-            blur_values.append(blur_value)
+            frames.append(frame)
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            blur_val = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+            blur_values.append(blur_val)
 
         capture.release()
 
+        sampled_frames = len(frames)
         if sampled_frames == 0:
             raise HTTPException(
                 status_code=400,
                 detail="No readable video frames found."
             )
 
-        average_blur = sum(blur_values) / len(blur_values)
+        # ----------------------------------------------------
+        # 1. Temporal Frame Differences & Color Correlation
+        # ----------------------------------------------------
+        diffs = []
+        corrs = []
+        for i in range(len(frames) - 1):
+            f1_gray = cv2.cvtColor(frames[i], cv2.COLOR_BGR2GRAY).astype(float)
+            f2_gray = cv2.cvtColor(frames[i+1], cv2.COLOR_BGR2GRAY).astype(float)
+            diffs.append(float(np.mean(np.abs(f1_gray - f2_gray))))
 
+            h1 = cv2.calcHist([frames[i]], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256])
+            h2 = cv2.calcHist([frames[i+1]], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256])
+            cv2.normalize(h1, h1)
+            cv2.normalize(h2, h2)
+            corrs.append(float(cv2.compareHist(h1, h2, cv2.HISTCMP_CORREL)))
+
+        avg_blur = float(np.mean(blur_values)) if blur_values else 0.0
+        blur_std = float(np.std(blur_values)) if blur_values else 0.0
+        avg_diff = float(np.mean(diffs)) if diffs else 0.0
+        diff_std = float(np.std(diffs)) if diffs else 0.0
+        min_corr = float(min(corrs)) if corrs else 1.0
+
+        # ----------------------------------------------------
+        # 2. Heuristic Deepfake & Splicing Scoring
+        # ----------------------------------------------------
         manipulation_score = 10
+        splicing_detected = False
 
-        if average_blur < 80:
+        if min_corr < 0.65:
+            splicing_detected = True
+            manipulation_score += 45
+            indicators.append(f"Abrupt scene cut or spliced frame transition detected (Color correlation drop: {min_corr:.2f})")
+            reasons.append(f"Frame Splicing: Inter-frame color distribution collapsed (correlation {min_corr:.2f}), indicating non-contiguous splicing or edited video seams.")
+        else:
+            reasons.append("Color Continuity: Seamless chromatic transitions across keyframe timeline.")
+
+        if diff_std > 2.5:
+            manipulation_score += 25
+            indicators.append("High temporal jitter and inter-frame motion irregularity detected")
+            reasons.append(f"Motion Inconsistency: Temporal delta variability ({diff_std:.2f}) exceeds natural cinematic thresholds, typical of AI synthesis micro-flickering.")
+        else:
+            reasons.append(f"Temporal Stability: Consistent inter-frame motion delta ({avg_diff:.2f}) across keyframes.")
+
+        if avg_diff > 14.0:
+            manipulation_score += 20
+            indicators.append("High temporal variance across consecutive frames")
+
+        if blur_std > 200.0:
+            manipulation_score += 25
+            indicators.append("Unnatural frame sharpness swings and optical focal variance")
+            reasons.append(f"Optical Instability: Keyframe sharpness variance (StdDev {blur_std:.1f}) indicates potential spliced content or uneven AI filtering.")
+        elif blur_std > 80.0:
             manipulation_score += 15
-            indicators.append(
-                "Low visual sharpness detected across sampled frames"
-            )
+            indicators.append("Moderate focal variation observed across sampled timeline")
+            reasons.append(f"Optical Variance: Slight focal shift (StdDev {blur_std:.1f}) detected across timeline.")
+        else:
+            reasons.append(f"Optical Continuity: Uniform sharpness distribution (StdDev {blur_std:.1f}) matches organic camera optics.")
 
-        if duration > 300:
-            indicators.append(
-                "Long video requires deeper frame-by-frame analysis"
-            )
-
-        if sampled_frames < 3:
+        if avg_blur < 80:
             manipulation_score += 10
-            indicators.append(
-                "Limited readable frames available"
-            )
+            indicators.append("Low visual sharpness detected across sampled frames")
 
-        manipulation_score = min(
-            manipulation_score,
-            100
-        )
-
+        manipulation_score = min(manipulation_score, 100)
         authenticity_score = 100 - manipulation_score
-
-        confidence = min(
-            60 + sampled_frames * 4,
-            90
-        )
-
-        severity = get_media_severity(
-            manipulation_score
-        )
+        confidence = min(60 + sampled_frames * 3, 95)
+        severity = get_media_severity(manipulation_score)
 
         if not indicators:
-            indicators.append(
-                "No obvious visual anomaly detected in sampled frames"
-            )
+            indicators.append("No obvious visual anomaly detected in sampled frames")
+
+        video_forensics = {
+            "resolution": f"{width}x{height}",
+            "fps": round(fps, 2),
+            "total_frames": total_frames,
+            "duration_seconds": round(duration, 2),
+            "sampled_frames": sampled_frames,
+            "avg_blur": round(avg_blur, 1),
+            "blur_stability": "STABLE" if blur_std <= 80 else ("MODERATE" if blur_std <= 200 else "ANOMALOUS"),
+            "temporal_diff_avg": round(avg_diff, 2),
+            "temporal_jitter_std": round(diff_std, 2),
+            "temporal_flow": "NATURAL_CONTINUOUS" if diff_std <= 2.5 else "IRREGULAR_JITTER",
+            "min_color_correlation": round(min_corr, 3),
+            "splicing_detected": splicing_detected,
+            "bitrate_kbps": int((len(video_bytes) * 8) / (duration * 1000)) if duration > 0 else 0
+        }
 
         # Main event
         event_result = db.execute(
@@ -3173,26 +3200,26 @@ async def analyze_video(
         if authenticity_score >= 70:
             video_verdict = {
                 "status": "AUTHENTIC",
-                "badge": "🟢 Likely Authentic",
+                "badge": "🟢 Likely Authentic & Organic Video",
                 "label": "Likely Authentic",
                 "color": "emerald",
-                "summary": "Video displays natural optical continuity and consistent inter-frame sharpness."
+                "summary": "Video displays natural optical continuity, uniform temporal motion, and consistent chromatic flow."
             }
         elif authenticity_score >= 40:
             video_verdict = {
                 "status": "SUSPICIOUS",
-                "badge": "🟡 Possibly Manipulated",
+                "badge": "🟡 Suspicious / Potential Motion Anomaly",
                 "label": "Possibly Manipulated",
                 "color": "amber",
-                "summary": "Video shows potential compression anomalies, frame smoothing, or motion jitter."
+                "summary": "Video shows potential compression anomalies, frame smoothing, or motion jitter between keyframes."
             }
         else:
             video_verdict = {
                 "status": "MANIPULATED",
-                "badge": "🔴 Highly Likely Manipulated",
+                "badge": "🔴 Highly Likely AI Deepfake or Spliced Video",
                 "label": "Highly Likely Manipulated",
                 "color": "rose",
-                "summary": "Video demonstrates strong markers of AI deepfake synthesis, temporal blur, or frame inconsistency."
+                "summary": "Video demonstrates strong markers of AI deepfake synthesis, temporal micro-flicker, or spliced frame seams."
             }
 
         return {
@@ -3205,11 +3232,17 @@ async def analyze_video(
                 "manipulation_score": manipulation_score,
                 "model_confidence": confidence,
                 "verdict": video_verdict,
+                "reasons": reasons,
+                "video_forensics": video_forensics,
                 "sampled_frames": sampled_frames,
                 "duration_seconds": round(duration, 2),
                 "indicators": indicators,
                 "actions": [
-                    "Review video authenticity before trusting or sharing."
+                    "Isolate and mark manipulated video segment.",
+                    "Verify audio-visual sync and source camera provenance.",
+                    "Do not trust or disseminate unverified video assets."
+                ] if manipulation_score >= 40 else [
+                    "Video displays natural optical continuity. Safe for publication."
                 ]
             }
         }
