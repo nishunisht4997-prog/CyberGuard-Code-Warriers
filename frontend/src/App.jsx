@@ -1148,17 +1148,22 @@ function UrlPage({ onComplete, onBack, showToast }) {
 
   const demoUrls = [
     {
-      label: "🚨 Phishing Apple ID",
-      url: "http://secure-appleid-verify.account-update.com/login",
+      label: "🚨 Typosquatting (Paypa1)",
+      url: "https://paypa1-security-verify.com/login",
       type: "critical",
     },
     {
-      label: "⚠️ Malicious IP Payload",
-      url: "http://192.168.1.105:8080/download/invoice_pdf.exe",
+      label: "❌ Ghost / Dead Domain",
+      url: "https://fake-login-sec99.com/auth",
+      type: "critical",
+    },
+    {
+      label: "⚠️ Malicious Raw IP Host",
+      url: "http://185.220.101.5:8080/download/invoice_pdf.exe",
       type: "high",
     },
     {
-      label: "🛡️ Legitimate Corporate",
+      label: "🛡️ Legitimate Corporate Portal",
       url: "https://www.microsoft.com/en-us/security",
       type: "safe",
     },
@@ -2312,6 +2317,63 @@ function ResultPanel({ result }) {
                 Extracted Host: <code>{analysis.domain}</code>
               </span>
             )}
+          </div>
+        </div>
+      )}
+
+      {analysis.dns_forensics && (
+        <div className="result-section">
+          <h4>DNS Resolution & Infrastructure Forensics</h4>
+          <div className="meta-forensics-grid">
+            <div className="forensics-subcard">
+              <div className="forensics-subcard-title">
+                <Globe size={14} /> DNS Root Zone & Host Resolution
+              </div>
+              <div className="forensics-subcard-row">
+                <span>DNS Status:</span>
+                <strong className={analysis.dns_forensics.status === "RESOLVED" ? "text-emerald" : "text-rose"}>
+                  {analysis.dns_forensics.status === "RESOLVED"
+                    ? "ACTIVE / RESOLVED"
+                    : analysis.dns_forensics.status === "NXDOMAIN"
+                    ? "NXDOMAIN (NON-EXISTENT)"
+                    : analysis.dns_forensics.status}
+                </strong>
+              </div>
+              <div className="forensics-subcard-row">
+                <span>Resolved IPv4:</span>
+                <code>{analysis.dns_forensics.resolved_ip || "None (Unresolvable / Dead Host)"}</code>
+              </div>
+              <div className="forensics-subcard-row">
+                <span>Host Type:</span>
+                <strong>{analysis.dns_forensics.is_ip ? "Raw IP Host" : "FQDN Domain"}</strong>
+              </div>
+            </div>
+
+            <div className="forensics-subcard">
+              <div className="forensics-subcard-title">
+                <ShieldAlert size={14} /> Domain Attributes & Abuse Tier
+              </div>
+              <div className="forensics-subcard-row">
+                <span>TLD Abuse Tier:</span>
+                <strong className={analysis.dns_forensics.tld_risk === "HIGH" ? "text-rose" : analysis.dns_forensics.tld_risk === "SAFE" ? "text-emerald" : ""}>
+                  .{analysis.dns_forensics.tld || "unknown"} ({analysis.dns_forensics.tld_risk || "STANDARD"})
+                </strong>
+              </div>
+              <div className="forensics-subcard-row">
+                <span>Shannon Entropy:</span>
+                <strong className={analysis.dns_forensics.entropy >= 3.8 ? "text-rose" : "text-emerald"}>
+                  {analysis.dns_forensics.entropy} bits ({analysis.dns_forensics.entropy >= 3.8 ? "DGA Anomaly" : "Natural Structure"})
+                </strong>
+              </div>
+              {analysis.dns_forensics.impersonated_brand && (
+                <div className="forensics-subcard-row">
+                  <span>Impersonation Target:</span>
+                  <strong className="text-rose">
+                    {analysis.dns_forensics.impersonated_brand.toUpperCase()} {analysis.dns_forensics.is_typosquat ? "(Typosquat / Homoglyph)" : "(Spoofing)"}
+                  </strong>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

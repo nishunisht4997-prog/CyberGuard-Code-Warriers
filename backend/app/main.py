@@ -559,269 +559,373 @@ def dashboard_stats():
 
 from urllib.parse import urlparse
 import re
+import socket
+import math
+from collections import Counter
 
 
 class URLRequest(BaseModel):
     url: str
 
 
-def analyze_url(url: str):
+HOMOGLYPH_MAP = {
+    '0': 'o', '1': 'l', '|': 'l', '!': 'i', '3': 'e', '4': 'a',
+    '@': 'a', '5': 's', '$': 's', '7': 't', '8': 'b'
+}
 
+TRUSTED_BRANDS = {
+    "microsoft": ["microsoft.com", "azure.com", "office.com", "live.com"],
+    "google": ["google.com", "gmail.com", "youtube.com", "googledrive.com"],
+    "apple": ["apple.com", "icloud.com"],
+    "amazon": ["amazon.com", "aws.amazon.com"],
+    "paypal": ["paypal.com"],
+    "facebook": ["facebook.com", "meta.com", "fb.com"],
+    "instagram": ["instagram.com"],
+    "netflix": ["netflix.com"],
+    "binance": ["binance.com"],
+    "coinbase": ["coinbase.com"],
+    "bankofamerica": ["bankofamerica.com"],
+    "chase": ["chase.com"],
+    "wellsfargo": ["wellsfargo.com"],
+    "github": ["github.com"],
+    "twitter": ["twitter.com", "x.com"],
+    "linkedin": ["linkedin.com"]
+}
+
+RISKY_TLDS = {
+    "xyz", "top", "tk", "ml", "ga", "cf", "gq", "click", "loan", 
+    "work", "date", "racing", "surf", "buzz", "rest", "cam", "fit", "online"
+}
+
+TRUSTED_TLDS = {"gov", "edu", "mil"}
+
+
+def calculate_entropy(text: str) -> float:
+    if not text:
+        return 0.0
+    counter = Counter(text)
+    length = len(text)
+    return -sum((count / length) * math.log2(count / length) for count in counter.values())
+
+
+def normalize_homoglyphs(text: str) -> str:
+    res = text.lower()
+    for char, rep in HOMOGLYPH_MAP.items():
+        res = res.replace(char, rep)
+    res = res.replace('vv', 'w').replace('rn', 'm')
+    return res
+
+
+def check_domain_dns(host: str) -> dict:
+    clean_host = host.split(":")[0].strip().lower()
+    ip_pattern = r"^\d{1,3}(\.\d{1,3}){3}$"
+    is_ip = bool(re.match(ip_pattern, clean_host))
+
+    if is_ip:
+        return {
+            "status": "RESOLVED",
+            "is_ip": True,
+            "resolved_ip": clean_host,
+            "error": None
+        }
+
+    if not clean_host:
+        return {
+            "status": "NXDOMAIN",
+            "is_ip": False,
+            "resolved_ip": None,
+            "error": "Empty hostname provided"
+        }
+
+    orig_timeout = socket.getdefaulttimeout()
+    try:
+        socket.setdefaulttimeout(2.5)
+        ip = socket.gethostbyname(clean_host)
+        return {
+            "status": "RESOLVED",
+            "is_ip": False,
+            "resolved_ip": ip,
+            "error": None
+        }
+    except socket.gaierror as e:
+        return {
+            "status": "NXDOMAIN",
+            "is_ip": False,
+            "resolved_ip": None,
+            "error": f"Domain does not resolve on public DNS root servers ({e.strerror if hasattr(e, 'strerror') else 'Host not found'})"
+        }
+    except socket.timeout:
+        return {
+            "status": "TIMEOUT",
+            "is_ip": False,
+            "resolved_ip": None,
+            "error": "DNS resolution timed out (> 2.5s)"
+        }
+    except Exception as e:
+        return {
+            "status": "ERROR",
+            "is_ip": False,
+            "resolved_ip": None,
+            "error": str(e)
+        }
+    finally:
+        socket.setdefaulttimeout(orig_timeout)
+
+
+def analyze_url(url: str):
     score = 0
     indicators = []
+    reasons = []
 
-    # --------------------------------------------------------
-    # Basic URL parsing
-    # --------------------------------------------------------
+    clean_url = url.strip()
+    if not clean_url:
+        return {
+            "risk_score": 100,
+            "severity": "CRITICAL",
+            "threat_type": "MALICIOUS_URL",
+            "summary": "Empty URL provided",
+            "indicators": ["Empty URL"],
+            "reasons": ["No target URL submitted for analysis."],
+            "dns_forensics": {
+                "status": "NXDOMAIN",
+                "is_ip": False,
+                "resolved_ip": None,
+                "dns_error": "Empty URL",
+                "tld": "",
+                "tld_risk": "HIGH",
+                "entropy": 0.0,
+                "impersonated_brand": None,
+                "is_typosquat": False
+            },
+            "verdict": {
+                "badge": "🔴 High Risk / Malicious or Ghost Domain",
+                "label": "HIGH_RISK_MALICIOUS",
+                "color": "rose",
+                "summary": "Target URL is empty or malformed."
+            },
+            "actions": ["BLOCK URL"],
+            "domain": ""
+        }
 
-    parsed = urlparse(url)
+    if "://" not in clean_url:
+        clean_url = "https://" + clean_url
 
+    parsed = urlparse(clean_url)
     domain = parsed.netloc.lower()
     path = parsed.path.lower()
 
-    if not parsed.scheme or not domain:
+    if not domain:
         return {
             "risk_score": 100,
             "severity": "CRITICAL",
             "threat_type": "MALICIOUS_URL",
             "summary": "Invalid or malformed URL detected",
             "indicators": ["Malformed URL"],
-            "actions": [
-                "BLOCK URL",
-                "WARN USER",
-                "REPORT INCIDENT"
-            ],
+            "reasons": ["URL does not contain a valid domain or host name."],
+            "dns_forensics": {
+                "status": "NXDOMAIN",
+                "is_ip": False,
+                "resolved_ip": None,
+                "dns_error": "Malformed URL",
+                "tld": "",
+                "tld_risk": "HIGH",
+                "entropy": 0.0,
+                "impersonated_brand": None,
+                "is_typosquat": False
+            },
+            "verdict": {
+                "badge": "🔴 High Risk / Malicious or Ghost Domain",
+                "label": "HIGH_RISK_MALICIOUS",
+                "color": "rose",
+                "summary": "Invalid or malformed URL syntax detected."
+            },
+            "actions": ["BLOCK URL", "WARN USER", "REPORT INCIDENT"],
             "domain": domain
         }
 
-    # --------------------------------------------------------
-    # HTTP instead of HTTPS
-    # --------------------------------------------------------
+    host_only = domain.split(":")[0]
 
+    # 1. Scheme Check
     if parsed.scheme.lower() != "https":
         score += 15
-        indicators.append(
-            "URL does not use HTTPS"
-        )
+        indicators.append("URL does not use HTTPS")
+        reasons.append("Unencrypted connection: Target site uses plaintext HTTP rather than HTTPS.")
+    else:
+        reasons.append("Protocol: Valid HTTPS encryption in use.")
 
-    # --------------------------------------------------------
-    # IP address instead of normal domain
-    # --------------------------------------------------------
-
+    # 2. IP Address check
     ip_pattern = r"^\d{1,3}(\.\d{1,3}){3}$"
+    is_raw_ip = bool(re.match(ip_pattern, host_only))
+    if is_raw_ip:
+        score += 35
+        indicators.append("URL uses a raw IP address instead of a domain name")
+        reasons.append(f"Host Obfuscation: Direct IP destination ({host_only}) bypasses domain-level reputation and TLS certificate validation.")
 
-    if re.match(ip_pattern, domain.split(":")[0]):
+    # 3. URL Shorteners
+    shorteners = ["bit.ly", "tinyurl.com", "t.co", "goo.gl", "is.gd", "cutt.ly"]
+    if any(host_only == s or host_only.endswith("." + s) for s in shorteners):
         score += 25
-        indicators.append(
-            "URL uses an IP address instead of a normal domain"
-        )
+        indicators.append("URL shortening service detected")
+        reasons.append("Link Cloaking: URL shortener obscures destination redirect endpoint.")
 
-    # --------------------------------------------------------
-    # URL shorteners
-    # --------------------------------------------------------
+    # 4. Brand Typosquatting & Look-Alike Impersonation
+    norm_host = normalize_homoglyphs(host_only)
+    impersonated_brand = None
+    is_typosquat = False
+    is_trusted_portal = False
 
-    shorteners = [
-        "bit.ly",
-        "tinyurl.com",
-        "t.co",
-        "goo.gl",
-        "is.gd",
-        "cutt.ly"
-    ]
+    for brand, legit_domains in TRUSTED_BRANDS.items():
+        if any(host_only == ld or host_only.endswith("." + ld) for ld in legit_domains):
+            is_trusted_portal = True
+            break
+        if brand in norm_host or brand in host_only:
+            impersonated_brand = brand
+            if brand in norm_host and brand not in host_only:
+                is_typosquat = True
+            break
 
-    if any(shortener in domain for shortener in shorteners):
-        score += 25
-        indicators.append(
-            "URL shortening service detected"
-        )
+    if impersonated_brand and not is_trusted_portal:
+        if is_typosquat:
+            score += 50
+            indicators.append(f"Deceptive Brand Typosquatting / Homoglyph attack spoofing '{impersonated_brand}'")
+            reasons.append(f"Character Spoofing: Look-alike homoglyph or misspelled character mimics the authentic '{impersonated_brand}' brand.")
+        else:
+            score += 35
+            indicators.append(f"Brand Impersonation: Unauthorized domain using '{impersonated_brand}' brand name")
+            reasons.append(f"Brand Impersonation: Unofficial domain embeds '{impersonated_brand}' to deceive end users.")
+    elif is_trusted_portal:
+        reasons.append("Domain Authentication: Verified legitimate corporate infrastructure.")
 
-    # --------------------------------------------------------
-    # Credential / login keywords
-    # --------------------------------------------------------
+    # 5. TLD Reputation
+    domain_parts = host_only.split(".")
+    tld = domain_parts[-1] if domain_parts else ""
+    tld_risk = "STANDARD"
 
-    credential_words = [
-        "login",
-        "signin",
-        "verify",
-        "verification",
-        "password",
-        "credential",
-        "account",
-        "secure-login",
-        "otp"
-    ]
-
-    credential_matches = [
-        word for word in credential_words
-        if word in path or word in domain
-    ]
-
-    if credential_matches:
+    if tld in RISKY_TLDS:
+        tld_risk = "HIGH"
         score += 20
-        indicators.append(
-            "Credential or account verification keywords detected"
-        )
+        indicators.append(f"High-abuse top-level domain (.{tld}) commonly associated with malicious campaigns")
+        reasons.append(f"TLD Abuse: Registration under '.{tld}' is heavily exploited in disposable phishing campaigns.")
+    elif tld in TRUSTED_TLDS:
+        tld_risk = "SAFE"
+        reasons.append(f"TLD Tier: Verified institutional/government zone (.{tld}).")
 
-    # --------------------------------------------------------
-    # Suspicious URL characters
-    # --------------------------------------------------------
+    # 6. Shannon Entropy (DGA Detection)
+    primary_label = domain_parts[-2] if len(domain_parts) >= 2 else domain_parts[0]
+    entropy = calculate_entropy(primary_label)
+    if len(primary_label) >= 9 and entropy >= 3.8 and not is_trusted_portal:
+        score += 25
+        indicators.append(f"High Shannon Entropy ({entropy:.2f}) indicates potential Domain Generation Algorithm (DGA)")
+        reasons.append(f"Algorithmic Randomness: Shannon entropy of {entropy:.2f} bits/symbol matches automated malware C2 naming.")
+    else:
+        reasons.append(f"Name Regularity: Shannon entropy is {entropy:.2f} (natural linguistic structure).")
 
+    # 7. Credential / Phishing Keywords
+    if not is_trusted_portal:
+        credential_words = ["login", "signin", "verify", "verification", "password", "credential", "account", "secure-login", "otp", "auth"]
+        credential_matches = [w for w in credential_words if w in path or w in host_only]
+        if credential_matches:
+            score += 20
+            indicators.append(f"Credential harvesting keywords detected: {', '.join(credential_matches)}")
+            reasons.append(f"Target Keywords: Suspicious authentication-themed keywords found ({', '.join(credential_matches)}).")
+
+        suspicious_domain_words = ["secure", "verify", "account", "update", "confirm", "support", "security", "wallet", "payment"]
+        suspicious_matches = [w for w in suspicious_domain_words if w in host_only and w not in credential_matches]
+        if suspicious_matches:
+            score += 15
+            indicators.append(f"Social engineering keywords in domain: {', '.join(suspicious_matches)}")
+            reasons.append(f"Social Engineering: Misleading trust words ({', '.join(suspicious_matches)}) used in domain name.")
+
+    # 8. Special characters & Subdomain count
     if "@" in url:
-        score += 20
-        indicators.append(
-            "URL contains @ character that may hide the real destination"
-        )
+        score += 25
+        indicators.append("URL contains @ character that may hide the real destination")
+        reasons.append("URL Obfuscation: The '@' symbol can mask destination routing.")
 
-    if "%" in url:
-        score += 5
-        indicators.append(
-            "Encoded characters detected in URL"
-        )
-
-    # --------------------------------------------------------
-    # Excessive subdomains
-    # --------------------------------------------------------
-
-    domain_parts = domain.split(".")
-
-    if len(domain_parts) >= 4:
+    if len(domain_parts) >= 4 and not is_trusted_portal:
         score += 15
-        indicators.append(
-            "Unusually high number of domain subdomains"
-        )
+        indicators.append("Unusually high number of domain subdomains")
+        reasons.append(f"Excessive Subdomains: Host contains {len(domain_parts)} sub-levels.")
 
-    # --------------------------------------------------------
-    # Suspicious domain words
-    # --------------------------------------------------------
-
-    suspicious_domain_words = [
-        "secure",
-        "verify",
-        "account",
-        "update",
-        "confirm",
-        "support",
-        "security",
-        "wallet",
-        "payment"
-    ]
-
-    suspicious_domain_matches = [
-        word for word in suspicious_domain_words
-        if word in domain
-    ]
-
-    if suspicious_domain_matches:
+    # 9. Live DNS Resolution Check
+    dns_info = check_domain_dns(host_only)
+    if dns_info["status"] == "NXDOMAIN":
+        score += 55
+        indicators.append("Non-Existent Domain (NXDOMAIN): Host does not exist on public DNS root servers")
+        reasons.append("DNS Failure: Host does not resolve to any active IP address. Often a dead phishing drop, typosquatted typo, or unverified ghost infrastructure.")
+    elif dns_info["status"] == "TIMEOUT":
         score += 15
-        indicators.append(
-            "Suspicious security or account-related domain wording"
-        )
+        indicators.append("DNS Resolution Timed Out: Name servers unreachable")
+        reasons.append("DNS Timeout: Host nameservers did not respond within the 2.5s inspection threshold.")
+    elif dns_info["status"] == "RESOLVED":
+        reasons.append(f"DNS Resolution: Host successfully resolves to live IP ({dns_info['resolved_ip']}).")
 
-    # --------------------------------------------------------
-    # Look-alike / impersonation domains
-    # --------------------------------------------------------
-
-    trusted_brands = [
-        "microsoft",
-        "google",
-        "apple",
-        "amazon",
-        "paypal",
-        "facebook",
-        "instagram"
-    ]
-
-    lookalike_found = False
-
-    for brand in trusted_brands:
-
-        if brand in domain:
-
-            trusted_domains = [
-                f"{brand}.com",
-                f"www.{brand}.com"
-            ]
-
-            if domain not in trusted_domains:
-                lookalike_found = True
-                break
-
-    if lookalike_found:
-        score += 30
-        indicators.append(
-            "Possible look-alike or brand impersonation domain detected"
-        )
-
-    # --------------------------------------------------------
-    # Very long URL
-    # --------------------------------------------------------
-
-    if len(url) > 120:
-        score += 10
-        indicators.append(
-            "Unusually long URL detected"
-        )
-
-    # --------------------------------------------------------
-    # Final score
-    # --------------------------------------------------------
+    dns_forensics = {
+        "status": dns_info["status"],
+        "is_ip": dns_info["is_ip"],
+        "resolved_ip": dns_info["resolved_ip"],
+        "dns_error": dns_info["error"],
+        "tld": tld,
+        "tld_risk": tld_risk,
+        "entropy": round(entropy, 2),
+        "impersonated_brand": impersonated_brand,
+        "is_typosquat": is_typosquat
+    }
 
     score = min(score, 100)
 
+    # 3-Tier Verdict
+    if score >= 60:
+        verdict = {
+            "badge": "🔴 High Risk / Malicious or Ghost Domain",
+            "label": "HIGH_RISK_MALICIOUS",
+            "color": "rose",
+            "summary": "This URL exhibits critical threat indicators such as NXDOMAIN non-existence, brand impersonation, raw IP hosting, or abusive infrastructure."
+        }
+    elif score >= 30:
+        verdict = {
+            "badge": "🟡 Suspicious / Unverified Infrastructure",
+            "label": "SUSPICIOUS_UNVERIFIED",
+            "color": "amber",
+            "summary": "This URL exhibits questionable attributes (e.g. unencrypted HTTP, credential keywords, or high-risk TLD) requiring elevated caution."
+        }
+    else:
+        verdict = {
+            "badge": "🟢 Likely Legitimate & Safe",
+            "label": "LIKELY_LEGITIMATE",
+            "color": "emerald",
+            "summary": "No deceptive spoofing, brand typosquatting, or malicious DNS anomalies detected. Infrastructure appears normal."
+        }
+
     if score >= 81:
         severity = "CRITICAL"
+        threat_type = "MALICIOUS_URL"
+        summary = "Critical malicious or deceptive URL detected"
     elif score >= 61:
         severity = "HIGH"
-    elif score >= 41:
-        severity = "MEDIUM"
-    elif score >= 21:
-        severity = "LOW"
-    else:
-        severity = "SAFE"
-
-    if score >= 61:
         threat_type = "MALICIOUS_URL"
         summary = "Potential malicious or deceptive URL detected"
     elif score >= 41:
+        severity = "MEDIUM"
         threat_type = "SUSPICIOUS_URL"
         summary = "Suspicious URL characteristics detected"
-    else:
+    elif score >= 21:
+        severity = "LOW"
         threat_type = "URL_ANALYSIS"
-        summary = "URL appears low risk based on current analysis"
-
-    # --------------------------------------------------------
-    # Response recommendations
-    # --------------------------------------------------------
+        summary = "Minor low-risk anomalies observed"
+    else:
+        severity = "SAFE"
+        threat_type = "URL_ANALYSIS"
+        summary = "URL appears low risk based on current forensics"
 
     if score >= 81:
-
-        actions = [
-            "BLOCK URL",
-            "WARN USER",
-            "QUARANTINE RELATED MESSAGE",
-            "NOTIFY SECURITY ADMIN"
-        ]
-
+        actions = ["BLOCK URL", "WARN USER", "QUARANTINE RELATED MESSAGE", "NOTIFY SECURITY ADMIN"]
     elif score >= 61:
-
-        actions = [
-            "BLOCK URL",
-            "WARN USER",
-            "REQUIRE ADDITIONAL VERIFICATION"
-        ]
-
+        actions = ["BLOCK URL", "WARN USER", "REQUIRE ADDITIONAL VERIFICATION"]
     elif score >= 41:
-
-        actions = [
-            "WARN USER",
-            "REQUEST MANUAL VERIFICATION"
-        ]
-
+        actions = ["WARN USER", "REQUEST MANUAL VERIFICATION"]
     else:
-
-        actions = [
-            "CONTINUE MONITORING"
-        ]
+        actions = ["CONTINUE MONITORING"]
 
     return {
         "risk_score": score,
@@ -829,6 +933,9 @@ def analyze_url(url: str):
         "threat_type": threat_type,
         "summary": summary,
         "indicators": indicators,
+        "reasons": reasons,
+        "dns_forensics": dns_forensics,
+        "verdict": verdict,
         "actions": actions,
         "domain": domain
     }
@@ -915,20 +1022,7 @@ def url_detection(data: URLRequest):
                 "domain": result["domain"],
                 "ssl_valid": data.url.lower().startswith("https://"),
                 "redirect_count": 0,
-                "domain_similarity_score": 30
-                if any(
-                    word in result["domain"]
-                    for word in [
-                        "microsoft",
-                        "google",
-                        "apple",
-                        "amazon",
-                        "paypal",
-                        "facebook",
-                        "instagram"
-                    ]
-                )
-                else 0,
+                "domain_similarity_score": 95 if result.get("dns_forensics", {}).get("is_typosquat") else (50 if result.get("dns_forensics", {}).get("impersonated_brand") else 0),
                 "url_risk_score": result["risk_score"],
                 "suspicious_features": ", ".join(
                     result["indicators"]
