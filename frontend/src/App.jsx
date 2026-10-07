@@ -2340,6 +2340,16 @@ function ResultPanel({ result }) {
                 </strong>
               </div>
               <div className="forensics-subcard-row">
+                <span>Web Reachability:</span>
+                <strong className={analysis.dns_forensics.web_reachable ? "text-emerald" : "text-rose"}>
+                  {analysis.dns_forensics.web_reachable
+                    ? `LIVE (HTTP ${analysis.dns_forensics.http_status || 200})`
+                    : analysis.dns_forensics.status === "RESOLVED"
+                    ? "DEAD / UNRESPONSIVE (TIMED OUT)"
+                    : "UNREACHABLE (NXDOMAIN)"}
+                </strong>
+              </div>
+              <div className="forensics-subcard-row">
                 <span>Resolved IPv4:</span>
                 <code>{analysis.dns_forensics.resolved_ip || "None (Unresolvable / Dead Host)"}</code>
               </div>

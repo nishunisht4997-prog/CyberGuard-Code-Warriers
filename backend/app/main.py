@@ -672,6 +672,43 @@ def check_domain_dns(host: str) -> dict:
         socket.setdefaulttimeout(orig_timeout)
 
 
+import http.client
+import ssl
+
+
+def probe_web_host(host: str, is_ssl: bool = True, timeout: float = 2.5) -> dict:
+    clean_host = host.split(":")[0].strip().lower()
+    try:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        if is_ssl:
+            conn = http.client.HTTPSConnection(clean_host, timeout=timeout, context=ctx)
+        else:
+            conn = http.client.HTTPConnection(clean_host, timeout=timeout)
+        conn.request("HEAD", "/")
+        res = conn.getresponse()
+        conn.close()
+        return {
+            "reachable": True,
+            "http_status": res.status,
+            "error": None
+        }
+    except Exception as e:
+        err = str(e)
+        if "timed out" in err.lower() or "timeout" in err.lower():
+            desc = "Connection timed out (Host unresponsive)"
+        elif "refused" in err.lower():
+            desc = "Connection refused by target host"
+        else:
+            desc = err
+        return {
+            "reachable": False,
+            "http_status": None,
+            "error": desc
+        }
+
+
 def analyze_url(url: str):
     score = 0
     indicators = []
@@ -860,11 +897,29 @@ def analyze_url(url: str):
     elif dns_info["status"] == "RESOLVED":
         reasons.append(f"DNS Resolution: Host successfully resolves to live IP ({dns_info['resolved_ip']}).")
 
+    # 10. Web Server Reachability (Live HTTP/HTTPS Probe)
+    web_probe = {
+        "reachable": False,
+        "http_status": None,
+        "error": "Host not resolved on DNS"
+    }
+    if dns_info["status"] == "RESOLVED":
+        web_probe = probe_web_host(host_only, is_ssl=(parsed.scheme.lower() == "https"), timeout=2.5)
+        if not web_probe["reachable"]:
+            score += 35
+            indicators.append(f"Unresponsive Web Server: DNS resolves but HTTP probe failed ({web_probe['error']})")
+            reasons.append(f"Web Server Reachability: Domain is registered on DNS ({dns_info['resolved_ip']}), but origin web server is dead/unresponsive ({web_probe['error']}). Indicates an abandoned, parked, or ghost domain.")
+        else:
+            reasons.append(f"Web Server Reachability: Web service is active and responsive (HTTP {web_probe['http_status']}).")
+
     dns_forensics = {
         "status": dns_info["status"],
         "is_ip": dns_info["is_ip"],
         "resolved_ip": dns_info["resolved_ip"],
         "dns_error": dns_info["error"],
+        "web_reachable": web_probe["reachable"],
+        "http_status": web_probe["http_status"],
+        "web_error": web_probe["error"],
         "tld": tld,
         "tld_risk": tld_risk,
         "entropy": round(entropy, 2),
