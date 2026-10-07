@@ -43,8 +43,22 @@ function severityClass(severity) {
 function App() {
   const [page, setPage] = useState("dashboard");
 
-  const [stats, setStats] = useState(null);
-  const [events, setEvents] = useState([]);
+  const [stats, setStats] = useState(() => {
+    try {
+      const cached = localStorage.getItem("cg_stats");
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [events, setEvents] = useState(() => {
+    try {
+      const cached = localStorage.getItem("cg_events");
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
 
   const [loading, setLoading] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
@@ -88,6 +102,10 @@ function App() {
 
       setStats(statsData);
       setEvents(eventsData.events || []);
+      try {
+        localStorage.setItem("cg_stats", JSON.stringify(statsData));
+        localStorage.setItem("cg_events", JSON.stringify(eventsData.events || []));
+      } catch {}
     } catch (error) {
       console.error(error);
 
@@ -317,7 +335,7 @@ function App() {
           <StatCard
             icon={<Activity size={22} />}
             title="Total Events"
-            value={stats?.total_events ?? 26}
+            value={stats?.total_events ?? (events.length > 0 ? events.length : 0)}
             trend="↑ 12%"
             trendType="up"
             description="All monitored events"
@@ -327,7 +345,7 @@ function App() {
           <StatCard
             icon={<Shield size={22} />}
             title="Total Threats"
-            value={stats?.total_threats ?? 22}
+            value={stats?.total_threats ?? (events.length > 0 ? events.filter(e => e.severity !== "SAFE").length : 0)}
             trend="↑ 7%"
             trendType="down"
             description="Detected security threats"
@@ -339,7 +357,7 @@ function App() {
             title="Critical"
             value={
               stats?.severity?.critical ??
-              events.filter((e) => e.severity === "CRITICAL").length ?? 6
+              events.filter((e) => e.severity === "CRITICAL").length
             }
             trend="↑ 33%"
             trendType="down"
@@ -352,7 +370,7 @@ function App() {
             title="High Risk"
             value={
               stats?.severity?.high ??
-              events.filter((e) => e.severity === "HIGH").length ?? 5
+              events.filter((e) => e.severity === "HIGH").length
             }
             trend="↑ 20%"
             trendType="amber"
@@ -423,25 +441,25 @@ function App() {
 
             <SeverityRow
               name="Critical"
-              count={stats?.severity?.critical ?? 6}
+              count={stats?.severity?.critical ?? events.filter((e) => e.severity === "CRITICAL").length}
               type="critical"
             />
 
             <SeverityRow
               name="High"
-              count={stats?.severity?.high ?? 5}
+              count={stats?.severity?.high ?? events.filter((e) => e.severity === "HIGH").length}
               type="high"
             />
 
             <SeverityRow
               name="Medium"
-              count={stats?.severity?.medium ?? 2}
+              count={stats?.severity?.medium ?? events.filter((e) => e.severity === "MEDIUM").length}
               type="medium"
             />
 
             <SeverityRow
               name="Low"
-              count={stats?.severity?.low ?? 1}
+              count={stats?.severity?.low ?? events.filter((e) => e.severity === "LOW").length}
               type="low"
             />
           </div>
