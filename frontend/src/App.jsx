@@ -26,6 +26,7 @@ import {
   Calendar,
   Camera,
   Layers,
+  Menu,
 } from "lucide-react";
 
 import "./App.css";
@@ -67,6 +68,7 @@ function App() {
 
   const [currentDate, setCurrentDate] = useState("May 5, 2026");
   const [currentTime, setCurrentTime] = useState("20:07 (IST)");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     function updateClock() {
@@ -143,6 +145,7 @@ function App() {
 
   function navigate(target) {
     setPage(target);
+    setMobileMenuOpen(false);
 
     window.scrollTo({
       top: 0,
@@ -627,10 +630,47 @@ function App() {
   return (
     <div className="app">
       {/* ==================================================== */}
+      {/* MOBILE TOPBAR (<= 992px) */}
+      {/* ==================================================== */}
+      <div className="mobile-header">
+        <button
+          type="button"
+          className="mobile-hamburger-btn"
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          aria-label="Toggle navigation menu"
+        >
+          {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
+        </button>
+
+        <div className="mobile-brand" onClick={() => navigate("dashboard")}>
+          <div className="mobile-brand-icon">
+            <Shield size={20} />
+          </div>
+          <div>
+            <h2>CYBERGUARD-X</h2>
+            <span>SOC DEFENCE</span>
+          </div>
+        </div>
+
+        <div className="mobile-header-status">
+          <span className="pulse-dot"></span>
+          <span>LIVE</span>
+        </div>
+      </div>
+
+      {/* Backdrop overlay for mobile drawer */}
+      {mobileMenuOpen && (
+        <div
+          className="mobile-backdrop"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* ==================================================== */}
       {/* SIDEBAR */}
       {/* ==================================================== */}
 
-      <aside className="sidebar">
+      <aside className={`sidebar ${mobileMenuOpen ? "sidebar-mobile-open" : ""}`}>
         <div className="brand">
           <div className="brand-icon">
             <Shield size={28} />
