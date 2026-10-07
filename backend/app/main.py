@@ -3093,8 +3093,16 @@ async def serve_frontend():
         return FileResponse(index_file)
 
     return {
-        "message": "CYBERGUARD-X API is running",
-        "frontend": "Build not found"
+        "system": "CYBERGUARD-X Threat Intelligence Engine",
+        "status": "ONLINE & ACTIVE",
+        "database": "TiDB Cloud MySQL (Permanent Storage)",
+        "version": "1.0.0",
+        "endpoints": {
+            "health": "/health",
+            "stats": "/dashboard/stats",
+            "events": "/events",
+            "docs": "/docs"
+        }
     }
 
 
