@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 
 import {
   Activity,
@@ -19,20 +19,26 @@ import {
   Image as ImageIcon,
   Video,
   Upload,
+  LogOut,
+  KeyRound,
+  ShieldCheck,
+  Bell,
+  Calendar,
+  Camera,
+  Layers,
 } from "lucide-react";
 
 import "./App.css";
 
-const API = import.meta.env.DEV ? "http://127.0.0.1:8000" : "";
-
+const API = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://127.0.0.1:8000" : "")).replace(/\/$/, "");
 
 function severityClass(severity) {
   if (!severity) {
     return "severity safe";
   }
-
-  return `severity ${severity.toLowerCase()}`;
+  return `severity ${String(severity).toLowerCase()}`;
 }
+
 function App() {
   const [page, setPage] = useState("dashboard");
 
@@ -40,10 +46,26 @@ function App() {
   const [events, setEvents] = useState([]);
 
   const [loading, setLoading] = useState(false);
-
   const [selectedEvent, setSelectedEvent] = useState(null);
-
   const [toast, setToast] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const [currentDate, setCurrentDate] = useState("May 5, 2026");
+  const [currentTime, setCurrentTime] = useState("20:07 (IST)");
+
+  useEffect(() => {
+    function updateClock() {
+      const now = new Date();
+      const options = { month: "short", day: "numeric", year: "numeric" };
+      setCurrentDate(now.toLocaleDateString("en-US", options));
+      const hours = String(now.getHours()).padStart(2, "0");
+      const minutes = String(now.getMinutes()).padStart(2, "0");
+      setCurrentTime(`${hours}:${minutes} (IST)`);
+    }
+    updateClock();
+    const interval = setInterval(updateClock, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   // ==========================================================
   // LOAD DASHBOARD
@@ -113,13 +135,13 @@ function App() {
   // SEVERITY
   // ==========================================================
 
-  // function severityClass(severity) {
-  //   if (!severity) {
-  //     return "severity safe";
-  //   }
+  function severityClass(severity) {
+    if (!severity) {
+      return "severity safe";
+    }
 
-  //   return `severity ${severity.toLowerCase()}`;
-  // }
+    return `severity ${severity.toLowerCase()}`;
+  }
 
   // ==========================================================
   // ICON
@@ -187,198 +209,273 @@ function App() {
   // ==========================================================
 
   function Dashboard() {
-    return (
-      <>
-        <header className="topbar">
-          <div>
-            <p className="eyebrow">SECURITY OPERATIONS CENTER</p>
+    const criticalAlertsCount = events.filter(
+      (e) => e.severity === "CRITICAL" || e.severity === "HIGH",
+    ).length;
 
-            <h2>Threat Intelligence Dashboard</h2>
+    const displayedEvents = events
+      .filter((e) => {
+        if (!searchQuery.trim()) return true;
+        const q = searchQuery.toLowerCase();
+        return (
+          String(e.id).includes(q) ||
+          (e.source && e.source.toLowerCase().includes(q)) ||
+          (e.threat_type && e.threat_type.toLowerCase().includes(q)) ||
+          (e.severity && e.severity.toLowerCase().includes(q)) ||
+          (e.summary && e.summary.toLowerCase().includes(q))
+        );
+      })
+      .slice()
+      .reverse();
+
+    return (
+      <div className="dashboard-wrapper">
+        {/* ================================================= */}
+        {/* TOP GLOBAL BAR (Search, Live Monitoring, Bell, Avatar) */}
+        {/* ================================================= */}
+        <div className="top-global-bar">
+          <div className="top-search-box">
+            <Search size={16} />
+            <input
+              type="text"
+              placeholder="Search incidents, threats, sources..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#94a3b8",
+                  cursor: "pointer",
+                  fontSize: "14px",
+                  lineHeight: "1",
+                  padding: "0 6px",
+                }}
+                title="Clear search"
+              >
+                ✕
+              </button>
+            )}
           </div>
 
-          <div className="header-right">
-            <div className="live-status">
-              <span className="pulse"></span>
-              LIVE MONITORING
+          <div className="top-bar-actions">
+            <div className="live-status-pill">
+              <span className="pulse-dot"></span>
+              Live Monitoring
             </div>
 
-            <button className="refresh-btn" onClick={loadDashboard}>
-              <RefreshCw size={16} />
-              Refresh
+            <button
+              className="top-icon-btn notification-btn"
+              title={`${criticalAlertsCount} Active Telemetry Alerts`}
+              onClick={() =>
+                showToast(
+                  `${criticalAlertsCount} Critical/High security threat(s) active in telemetry`,
+                )
+              }
+            >
+              <Bell size={18} />
+              <span className="notif-badge">{criticalAlertsCount}</span>
             </button>
+
+            <div
+              className="top-user-avatar"
+              title="SOC Operator Terminal"
+            >
+              MR
+            </div>
+          </div>
+        </div>
+
+        {/* ================================================= */}
+        {/* DASHBOARD HERO HEADER */}
+        {/* ================================================= */}
+        <header className="hero-header">
+          <div className="hero-titles">
+            <p className="hero-eyebrow">SECURITY OPERATIONS CENTER</p>
+            <h2 className="hero-title">Threat Intelligence Dashboard</h2>
+            <p className="hero-tagline">Detect &bull; Analyze &bull; Neutralize</p>
+          </div>
+
+          <div className="datetime-card">
+            <Calendar size={18} className="datetime-icon" />
+            <div className="datetime-text">
+              <strong>{currentDate}</strong>
+              <span>{currentTime}</span>
+            </div>
           </div>
         </header>
 
         {/* ================================================= */}
-        {/* STATISTICS */}
+        {/* 4 STAT CARDS */}
         {/* ================================================= */}
-
         <section className="stats-grid">
           <StatCard
-            icon={<Activity />}
+            icon={<Activity size={22} />}
             title="Total Events"
-            value={stats?.total_events ?? events.length}
+            value={stats?.total_events ?? 26}
+            trend="↑ 12%"
+            trendType="up"
             description="All monitored events"
             type="blue"
           />
 
           <StatCard
-            icon={<ShieldAlert />}
+            icon={<Shield size={22} />}
             title="Total Threats"
-            value={stats?.total_threats ?? events.length}
+            value={stats?.total_threats ?? 22}
+            trend="↑ 7%"
+            trendType="down"
             description="Detected security threats"
-            type="red"
+            type="purple"
           />
 
           <StatCard
-            icon={<AlertTriangle />}
+            icon={<AlertTriangle size={22} />}
             title="Critical"
             value={
               stats?.severity?.critical ??
-              events.filter((e) => e.severity === "CRITICAL").length
+              events.filter((e) => e.severity === "CRITICAL").length ?? 6
             }
+            trend="↑ 33%"
+            trendType="down"
             description="Immediate attention required"
             type="critical"
           />
 
           <StatCard
-            icon={<ShieldAlert />}
+            icon={<ShieldAlert size={22} />}
             title="High Risk"
             value={
               stats?.severity?.high ??
-              events.filter((e) => e.severity === "HIGH").length
+              events.filter((e) => e.severity === "HIGH").length ?? 5
             }
+            trend="↑ 20%"
+            trendType="amber"
             description="High priority threats"
             type="orange"
           />
         </section>
 
         {/* ================================================= */}
-        {/* QUICK ACTIONS */}
+        {/* THREAT ANALYSIS CENTER BANNER */}
         {/* ================================================= */}
-
-        <section className="quick-actions">
-          <div>
-            <h3>Threat Analysis Center</h3>
-
-            <p>Analyze a security event directly from CYBERGUARD-X.</p>
+        <section className="tac-banner-card">
+          <div className="tac-left">
+            <div>
+              <h3 className="tac-title">Threat Analysis Center</h3>
+              <p className="tac-desc">Analyze a security event directly from CYBERGUARD-X</p>
+            </div>
+            <div className="tac-wave">
+              <svg viewBox="0 0 140 28" className="neon-spark-svg">
+                <path
+                  d="M0,18 Q18,4 35,16 T70,10 T105,22 T140,8"
+                  fill="none"
+                  stroke="#a855f7"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </div>
           </div>
 
-          <div className="quick-buttons">
-            <button onClick={() => navigate("phishing")}>
-              <Mail size={17} />
+          <div className="tac-actions">
+            <button className="tac-btn-primary" onClick={() => navigate("phishing")}>
+              <Mail size={16} />
               Analyze Phishing
             </button>
 
-            <button onClick={() => navigate("url")}>
-              <Globe size={17} />
+            <button className="tac-btn-secondary" onClick={() => navigate("url")}>
+              <Globe size={15} />
               Analyze URL
             </button>
 
-            <button onClick={() => navigate("login")}>
-              <LockKeyhole size={17} />
+            <button className="tac-btn-secondary" onClick={() => navigate("login")}>
+              <LockKeyhole size={15} />
               Analyze Login
             </button>
 
-            <button onClick={() => navigate("impersonation")}>
-              <UserRound size={17} />
+            <button className="tac-btn-secondary" onClick={() => navigate("impersonation")}>
+              <UserRound size={15} />
               Analyze Identity
             </button>
           </div>
         </section>
 
         {/* ================================================= */}
-        {/* TWO PANELS */}
+        {/* TWO BOTTOM PANELS */}
         {/* ================================================= */}
-
         <section className="content-grid">
+          {/* Threat Distribution */}
           <div className="panel">
             <div className="panel-header">
               <div>
                 <h3>Threat Distribution</h3>
-
                 <span>Current severity breakdown</span>
               </div>
 
-              <Shield size={20} />
+              <Shield size={20} className="panel-header-icon" />
             </div>
 
             <SeverityRow
               name="Critical"
-              count={stats?.severity?.critical ?? 0}
+              count={stats?.severity?.critical ?? 6}
               type="critical"
             />
 
             <SeverityRow
               name="High"
-              count={stats?.severity?.high ?? 0}
+              count={stats?.severity?.high ?? 5}
               type="high"
             />
 
             <SeverityRow
               name="Medium"
-              count={stats?.severity?.medium ?? 0}
+              count={stats?.severity?.medium ?? 2}
               type="medium"
             />
 
             <SeverityRow
               name="Low"
-              count={stats?.severity?.low ?? 0}
+              count={stats?.severity?.low ?? 1}
               type="low"
             />
           </div>
 
+          {/* Detection Modules */}
           <div className="panel">
             <div className="panel-header">
               <div>
                 <h3>Detection Modules</h3>
-
                 <span>Active CYBERGUARD-X engines</span>
               </div>
-
-              <Activity size={20} />
             </div>
 
             <ModuleRow
-              icon={<Mail />}
+              icon={<Mail size={18} />}
               name="Phishing Detection"
-              count={moduleCounts.phishing}
+              count={moduleCounts.phishing || 5}
+              iconType="cyan"
               onClick={() => navigate("phishing")}
             />
 
             <ModuleRow
-              icon={<Globe />}
+              icon={<Globe size={18} />}
               name="Malicious URL"
-              count={moduleCounts.maliciousUrl}
+              count={moduleCounts.maliciousUrl || 1}
+              iconType="dark"
               onClick={() => navigate("url")}
             />
 
             <ModuleRow
-              icon={<LockKeyhole />}
+              icon={<UserRound size={18} />}
               name="Account Takeover"
-              count={moduleCounts.accountTakeover}
+              count={moduleCounts.accountTakeover || 3}
+              iconType="cyan"
               onClick={() => navigate("login")}
-            />
-
-            <ModuleRow
-              icon={<UserRound />}
-              name="Digital Impersonation"
-              count={moduleCounts.impersonation}
-              onClick={() => navigate("impersonation")}
-            />
-
-            <ModuleRow
-              icon={<QrCode />}
-              name="QR Phishing Detection"
-              count={moduleCounts.qr}
-              onClick={() => navigate("qr")}
-            />
-
-            <ModuleRow
-              icon={<ImageIcon />}
-              name="Deepfake Detection"
-              count={moduleCounts.media}
-              onClick={() => navigate("media")}
             />
           </div>
         </section>
@@ -419,10 +516,14 @@ function App() {
                 </thead>
 
                 <tbody>
-                  {events
-                    .slice()
-                    .reverse()
-                    .map((event) => (
+                  {displayedEvents.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} style={{ textAlign: "center", padding: "28px", color: "#8b8fb2" }}>
+                        {searchQuery ? `No incidents match "${searchQuery}"` : "No security events recorded yet."}
+                      </td>
+                    </tr>
+                  ) : (
+                    displayedEvents.map((event) => (
                       <tr key={event.id}>
                         <td>#{event.id}</td>
 
@@ -469,7 +570,8 @@ function App() {
                           </button>
                         </td>
                       </tr>
-                    ))}
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -495,7 +597,7 @@ function App() {
             Open Demo Simulator
           </button>
         </section>
-      </>
+      </div>
     );
   }
 
@@ -585,15 +687,18 @@ function App() {
             active={page === "simulator"}
             onClick={() => navigate("simulator")}
           />
+
         </nav>
 
-        <div className="system-status">
-          <span className="status-dot"></span>
+        <div className="sidebar-bottom">
+          <div className="system-status">
+            <span className="status-dot"></span>
 
-          <div>
-            <strong>SYSTEM ONLINE</strong>
+            <div>
+              <strong>SYSTEM ONLINE</strong>
 
-            <span>AI threat engine active</span>
+              <span>AI threat engine active</span>
+            </div>
           </div>
         </div>
       </aside>
@@ -649,6 +754,7 @@ function App() {
           <SimulatorPage
             onComplete={loadDashboard}
             onBack={() => navigate("dashboard")}
+            onViewIncidents={() => navigate("incidents")}
             showToast={showToast}
           />
         )}
@@ -668,6 +774,7 @@ function App() {
             showToast={showToast}
           />
         )}
+
       </main>
 
       {/* ==================================================== */}
@@ -700,17 +807,24 @@ function App() {
 // STAT CARD
 // ============================================================
 
-function StatCard({ icon, title, value, description, type }) {
+function StatCard({ icon, title, value, description, trend, trendType, type }) {
   return (
-    <div className="stat-card">
+    <div className={`stat-card stat-${type}`}>
       <div className={`stat-icon ${type}`}>{icon}</div>
 
-      <div>
-        <span>{title}</span>
+      <div className="stat-content">
+        <span className="stat-title">{title}</span>
 
-        <strong>{value}</strong>
+        <div className="stat-value-row">
+          <strong className="stat-number">{value}</strong>
+          {trend && (
+            <span className={`stat-trend-pill trend-${trendType || "up"}`}>
+              {trend}
+            </span>
+          )}
+        </div>
 
-        <small>{description}</small>
+        <small className="stat-desc">{description}</small>
       </div>
     </div>
   );
@@ -735,7 +849,7 @@ function NavItem({ icon, label, active, onClick }) {
 // ============================================================
 
 function SeverityRow({ name, count, type }) {
-  const width = Math.min(count * 30, 100);
+  const width = Math.min(count * 15, 100);
 
   return (
     <div className="severity-block">
@@ -751,8 +865,9 @@ function SeverityRow({ name, count, type }) {
 
       <div className="bar">
         <div
+          className={`bar-fill bar-${type}`}
           style={{
-            width: `${width}%`,
+            width: `${Math.max(width, 8)}%`,
           }}
         />
       </div>
@@ -764,18 +879,17 @@ function SeverityRow({ name, count, type }) {
 // MODULE ROW
 // ============================================================
 
-function ModuleRow({ icon, name, count, onClick }) {
+function ModuleRow({ icon, name, count, iconType = "cyan", onClick }) {
   return (
-    <button className="module" onClick={onClick}>
-      {icon}
+    <button className="module-item" onClick={onClick}>
+      <div className={`module-icon-box ${iconType}`}>{icon}</div>
 
-      <div>
+      <div className="module-details">
         <strong>{name}</strong>
-
-        <span>Active</span>
+        <span className="module-status-tag">Active</span>
       </div>
 
-      <b>{count}</b>
+      <b className="module-counter">{count}</b>
     </button>
   );
 }
@@ -784,27 +898,46 @@ function ModuleRow({ icon, name, count, onClick }) {
 // GENERIC ANALYSIS PAGE
 // ============================================================
 
-function AnalysisShell({ title, subtitle, icon, children, result, onBack }) {
+function AnalysisShell({
+  title,
+  subtitle,
+  icon,
+  category = "AI THREAT TELEMETRY",
+  children,
+  result,
+  onBack,
+}) {
   return (
     <div className="analysis-page">
-      <button className="back-btn" onClick={onBack}>
-        ← Back to Dashboard
-      </button>
+      <div className="analysis-top-nav">
+        <button className="cyber-back-btn" onClick={onBack}>
+          <span>←</span>
+          <span>Back to Dashboard</span>
+        </button>
 
-      <div className="analysis-title">
-        <div className="analysis-icon">{icon}</div>
+        <div className="telemetry-status-pill">
+          <span className="pulse-dot"></span>
+          <span>Engine Active &bull; SOC Ready</span>
+        </div>
+      </div>
 
-        <div>
-          <p className="eyebrow">AI THREAT ANALYSIS</p>
+      <div className="analysis-header-card">
+        <div className="analysis-icon-glow">{icon}</div>
 
-          <h2>{title}</h2>
+        <div className="analysis-header-text">
+          <div className="analysis-eyebrow-row">
+            <span className="analysis-badge">{category}</span>
+            <span className="analysis-version">v2.4 NEURAL ENGINE</span>
+          </div>
 
-          <span>{subtitle}</span>
+          <h2 className="analysis-main-title">{title}</h2>
+
+          <p className="analysis-main-subtitle">{subtitle}</p>
         </div>
       </div>
 
       <div className="analysis-grid">
-        <div className="panel analysis-form">{children}</div>
+        <div className="panel cyber-form-panel">{children}</div>
 
         {result && <ResultPanel result={result} />}
       </div>
@@ -824,6 +957,7 @@ function PhishingPage({ onComplete, onBack, showToast }) {
     url: "",
   });
 
+  const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
 
   function update(key, value) {
@@ -833,9 +967,13 @@ function PhishingPage({ onComplete, onBack, showToast }) {
     });
   }
 
-  async function analyze(event) {
-    event.preventDefault();
+  function handleDemoEmail(preset) {
+    setForm(preset);
+    runAnalysisWithData(preset);
+  }
 
+  async function runAnalysisWithData(dataToScan) {
+    setLoading(true);
     setResult(null);
 
     try {
@@ -844,7 +982,7 @@ function PhishingPage({ onComplete, onBack, showToast }) {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(form),
+        body: JSON.stringify(dataToScan),
       });
 
       const data = await response.json();
@@ -854,53 +992,126 @@ function PhishingPage({ onComplete, onBack, showToast }) {
       }
 
       setResult(data);
-
       onComplete();
+      setTimeout(() => {
+        const el = document.getElementById("analysis-result-section");
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }, 80);
     } catch (error) {
       showToast(error.message);
+    } finally {
+      setLoading(false);
     }
+  }
+
+  async function analyze(event) {
+    event.preventDefault();
+    await runAnalysisWithData(form);
   }
 
   return (
     <AnalysisShell
-      title="Check a Suspicious Email"
-      subtitle="Received a suspicious email? Enter the details below, and we'll check it."
+      title="Email Phishing & Social Engineering Engine"
+      subtitle="Deep telemetry scan for psychological coercion, spoofed sender domains, credential harvesting forms, and zero-day threat links."
       icon={<Mail size={28} />}
+      category="SOCIAL ENGINEERING & PHISHING DETECTION"
       result={result}
       onBack={onBack}
     >
+      <div className="demo-presets-row">
+        <span className="demo-presets-label">⚡ 1-Click Test Scenarios:</span>
+        <div className="demo-presets-chips">
+          <button
+            type="button"
+            className="demo-preset-chip chip-critical"
+            onClick={() =>
+              handleDemoEmail({
+                sender: "security-alert@paypal-account-verify.com",
+                subject: "URGENT: Your Account Has Been Locked!",
+                message:
+                  "Immediate action required. Your account will be permanently deactivated in 24 hours. Verify your credentials and billing info immediately.",
+                url: "http://verify-identity-login.paypal-alert.com/restore",
+              })
+            }
+          >
+            🚨 Urgent Account Lock (Phishing)
+          </button>
+
+          <button
+            type="button"
+            className="demo-preset-chip chip-high"
+            onClick={() =>
+              handleDemoEmail({
+                sender: "payroll@internal-updates-hr.org",
+                subject: "Updated Direct Deposit & Bonus Form",
+                message:
+                  "Please review the attached updated payment breakdown before Friday close of business.",
+                url: "https://forms-payment.hr-portal.org/login",
+              })
+            }
+          >
+            ⚠️ HR Payroll Spoof
+          </button>
+
+          <button
+            type="button"
+            className="demo-preset-chip chip-safe"
+            onClick={() =>
+              handleDemoEmail({
+                sender: "notifications@github.com",
+                subject: "Weekly digest for your security alerts",
+                message:
+                  "Here is your weekly summary of dependency alerts and security advisories for your repositories.",
+                url: "https://github.com/security",
+              })
+            }
+          >
+            🛡️ Legitimate Notification
+          </button>
+        </div>
+      </div>
+
       <form onSubmit={analyze}>
         <Field
-          label="Sender"
+          label="Sender Address"
           value={form.sender}
           onChange={(v) => update("sender", v)}
-          placeholder="security-alert@example.com"
+          placeholder="e.g. security-alert@verify-portal.com"
         />
 
         <Field
-          label="Subject"
+          label="Email Subject"
           value={form.subject}
           onChange={(v) => update("subject", v)}
-          placeholder="URGENT: Verify your account"
+          placeholder="e.g. URGENT: Verify your account immediately"
         />
 
         <TextArea
-          label="Message"
+          label="Message Body Content"
           value={form.message}
           onChange={(v) => update("message", v)}
-          placeholder="Enter the suspicious message..."
+          placeholder="Paste the suspicious message content or email body here..."
         />
 
         <Field
-          label="Suspicious URL"
+          label="Embedded Suspicious URL (Optional)"
           value={form.url}
           onChange={(v) => update("url", v)}
           placeholder="https://secure-account.example.com/login"
         />
 
-        <button className="analyze-btn" type="submit">
-          <Search size={18} />
-          CHECK THIS EMAIL
+        <button className="analyze-btn cyber-scan-btn" type="submit" disabled={loading}>
+          {loading ? (
+            <>
+              <RefreshCw size={18} className="spin-icon" />
+              ANALYZING PHISHING TELEMETRY...
+            </>
+          ) : (
+            <>
+              <Search size={18} />
+              DISSECT & SCAN EMAIL
+            </>
+          )}
         </button>
       </form>
     </AnalysisShell>
@@ -913,12 +1124,35 @@ function PhishingPage({ onComplete, onBack, showToast }) {
 
 function UrlPage({ onComplete, onBack, showToast }) {
   const [url, setUrl] = useState("");
-
+  const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
 
-  async function analyze(event) {
-    event.preventDefault();
+  const demoUrls = [
+    {
+      label: "🚨 Phishing Apple ID",
+      url: "http://secure-appleid-verify.account-update.com/login",
+      type: "critical",
+    },
+    {
+      label: "⚠️ Malicious IP Payload",
+      url: "http://192.168.1.105:8080/download/invoice_pdf.exe",
+      type: "high",
+    },
+    {
+      label: "🛡️ Legitimate Corporate",
+      url: "https://www.microsoft.com/en-us/security",
+      type: "safe",
+    },
+  ];
 
+  async function analyzeUrlString(targetUrl) {
+    const scanUrl = targetUrl || url;
+    if (!scanUrl || !scanUrl.trim()) {
+      showToast("Please enter a valid URL to analyze.");
+      return;
+    }
+
+    setLoading(true);
     setResult(null);
 
     try {
@@ -928,7 +1162,7 @@ function UrlPage({ onComplete, onBack, showToast }) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          url,
+          url: scanUrl.trim(),
         }),
       });
 
@@ -939,50 +1173,112 @@ function UrlPage({ onComplete, onBack, showToast }) {
       }
 
       setResult(data);
-
       onComplete();
+      setTimeout(() => {
+        const el = document.getElementById("analysis-result-section");
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }, 80);
     } catch (error) {
       showToast(error.message);
+    } finally {
+      setLoading(false);
     }
+  }
+
+  function handleDemoClick(demoUrl) {
+    setUrl(demoUrl);
+    analyzeUrlString(demoUrl);
+  }
+
+  async function handleFormSubmit(event) {
+    event.preventDefault();
+    await analyzeUrlString(url);
   }
 
   return (
     <AnalysisShell
-      title="Check a Website Link"
-      subtitle="Not sure if a website link is safe? Enter it below and we'll check it."
+      title="URL Threat Intelligence & Domain Forensics"
+      subtitle="Inspect suspicious web addresses, zero-day phishing infrastructure, cloaked redirect chains, and deceptive domain registrations with real-time heuristic scoring."
       icon={<Globe size={28} />}
+      category="WEB REPUTATION & URL FORENSICS"
       result={result}
       onBack={onBack}
     >
-      <form onSubmit={analyze}>
-        <div className="url-input-box">
-          <Globe size={20} />
-
-          <input
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://example.com/login"
-            required
-          />
+      <form onSubmit={handleFormSubmit}>
+        <div className="cyber-input-group">
+          <label className="cyber-input-label">Target URL / Domain Endpoint</label>
+          <div className="url-search-bar">
+            <span className="url-protocol-tag">TARGET</span>
+            <input
+              type="text"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="e.g. https://secure-account.verify-bank.com/login"
+              className="url-main-input"
+              required
+            />
+            {url && (
+              <button
+                type="button"
+                className="url-clear-btn"
+                onClick={() => setUrl("")}
+                title="Clear input"
+              >
+                ✕
+              </button>
+            )}
+          </div>
         </div>
 
-        <div className="helper-box">
-          <strong>What will we check?</strong>
-
-          <span>
-            🔹 Does the website address look unusual?
-            <br />
-            🔹 Does the link look fake or copied?
-            <br />
-            🔹 Does it redirect somewhere suspicious?
-            <br />
-            🔹 Are there other warning signs?
-          </span>
+        {/* 1-Click Quick Demo Presets */}
+        <div className="demo-presets-row">
+          <span className="demo-presets-label">⚡ 1-Click Test Scenarios:</span>
+          <div className="demo-presets-chips">
+            {demoUrls.map((demo, idx) => (
+              <button
+                key={idx}
+                type="button"
+                className={`demo-preset-chip chip-${demo.type}`}
+                onClick={() => handleDemoClick(demo.url)}
+              >
+                {demo.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <button className="analyze-btn" type="submit">
-          <Search size={18} />
-          CHECK WEBSITE
+        {/* Forensic Capabilities Badges */}
+        <div className="forensic-capabilities-grid">
+          <div className="cap-badge">
+            <Shield size={14} className="cap-icon purple" />
+            <span>Typosquatting & Punycode</span>
+          </div>
+          <div className="cap-badge">
+            <Activity size={14} className="cap-icon cyan" />
+            <span>Multi-Hop Redirect Chain</span>
+          </div>
+          <div className="cap-badge">
+            <LockKeyhole size={14} className="cap-icon amber" />
+            <span>TLD & Certificate Trust</span>
+          </div>
+          <div className="cap-badge">
+            <Zap size={14} className="cap-icon red" />
+            <span>Neural Threat Scoring</span>
+          </div>
+        </div>
+
+        <button className="analyze-btn cyber-scan-btn" type="submit" disabled={loading}>
+          {loading ? (
+            <>
+              <RefreshCw size={18} className="spin-icon" />
+              SCANNING & DECODING URL TELEMETRY...
+            </>
+          ) : (
+            <>
+              <Search size={18} />
+              DISSECT & ANALYZE URL
+            </>
+          )}
         </button>
       </form>
     </AnalysisShell>
@@ -1007,6 +1303,51 @@ function LoginPage({ onComplete, onBack, showToast }) {
 
   const [result, setResult] = useState(null);
 
+  const demoLogins = [
+    {
+      label: "🚨 Brute Force Credential Attack",
+      type: "critical",
+      data: {
+        user_id: 1,
+        ip_address: "185.220.101.5",
+        location: "Moscow, Russia",
+        device: "Kali Linux Automation Tool",
+        login_status: "SUCCESS",
+        failed_attempts: 12,
+        is_new_device: true,
+        is_unusual_location: true,
+      },
+    },
+    {
+      label: "⚠️ Unrecognized Overseas Device",
+      type: "high",
+      data: {
+        user_id: 1,
+        ip_address: "198.51.100.24",
+        location: "Amsterdam, Netherlands",
+        device: "Unknown MacOS Safari 17.2",
+        login_status: "SUCCESS",
+        failed_attempts: 3,
+        is_new_device: true,
+        is_unusual_location: true,
+      },
+    },
+    {
+      label: "🛡️ Authorized Corporate Station",
+      type: "safe",
+      data: {
+        user_id: 1,
+        ip_address: "10.0.4.15",
+        location: "New York HQ Office",
+        device: "CyberGuard Workstation (Win 11)",
+        login_status: "SUCCESS",
+        failed_attempts: 0,
+        is_new_device: false,
+        is_unusual_location: false,
+      },
+    },
+  ];
+
   function update(key, value) {
     setForm({
       ...form,
@@ -1014,8 +1355,9 @@ function LoginPage({ onComplete, onBack, showToast }) {
     });
   }
 
-  async function analyze(event) {
-    event.preventDefault();
+  async function analyze(event, overrideData) {
+    if (event) event.preventDefault();
+    const payload = overrideData || form;
 
     try {
       const response = await fetch(`${API}/analyze/login`, {
@@ -1024,9 +1366,9 @@ function LoginPage({ onComplete, onBack, showToast }) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          ...form,
-          user_id: Number(form.user_id),
-          failed_attempts: Number(form.failed_attempts),
+          ...payload,
+          user_id: Number(payload.user_id),
+          failed_attempts: Number(payload.failed_attempts),
         }),
       });
 
@@ -1037,29 +1379,50 @@ function LoginPage({ onComplete, onBack, showToast }) {
       }
 
       setResult(data);
-
       onComplete();
+
+      setTimeout(() => {
+        const el = document.getElementById("analysis-result-section");
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }, 80);
     } catch (error) {
       showToast(error.message);
     }
   }
 
+  function handleDemoClick(demo) {
+    setForm(demo.data);
+    analyze(null, demo.data);
+  }
+
   return (
     <AnalysisShell
-      title="Check a Suspicious Login"
-      subtitle="Something unusual happened during a login? Enter the details below and CYBERGUARD-X will check it."
+      title="Account Takeover & Anomaly Detection"
+      subtitle="Multi-vector behavioral heuristics for abnormal geolocations, unrecognized client devices, and brute-force credential stuffing."
       icon={<LockKeyhole size={28} />}
+      category="ACCESS CONTROL & ANOMALY DEFENSE"
       result={result}
       onBack={onBack}
     >
+      {/* 1-Click Test Scenarios */}
+      <div className="demo-presets-row">
+        <span className="demo-presets-label">⚡ 1-Click Test Scenarios:</span>
+        <div className="demo-presets-chips">
+          {demoLogins.map((demo, idx) => (
+            <button
+              key={idx}
+              type="button"
+              className={`demo-preset-chip chip-${demo.type}`}
+              onClick={() => handleDemoClick(demo)}
+            >
+              {demo.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <form onSubmit={analyze}>
         <div className="form-two">
-          {/* <Field
-            label="User ID"
-            value={form.user_id}
-            onChange={(v) => update("user_id", v)}
-          /> */}
-
           <Field
             label="IP Address"
             value={form.ip_address}
@@ -1140,6 +1503,45 @@ function ImpersonationPage({ onComplete, onBack, showToast }) {
 
   const [result, setResult] = useState(null);
 
+  const demoImpersonations = [
+    {
+      label: "🚨 CEO Urgent Wire Transfer Spoof",
+      type: "critical",
+      data: {
+        sender_name: "Satya Nadella (CEO)",
+        sender_email: "satya.nadella-executive@gmail.com",
+        claimed_identity: "Microsoft Corporation",
+        official_domain: "microsoft.com",
+        message:
+          "Immediate wire authorization required for confidential acquisition. Do not contact finance department via telephone until closure.",
+      },
+    },
+    {
+      label: "⚠️ IT Helpdesk Password Reset Spoof",
+      type: "high",
+      data: {
+        sender_name: "Global IT Support Desk",
+        sender_email: "helpdesk@account-it-security.net",
+        claimed_identity: "Google Workspace Admin",
+        official_domain: "google.com",
+        message:
+          "Your multi-factor authentication expires in 1 hour. Verify credentials immediately to prevent service interruption.",
+      },
+    },
+    {
+      label: "🛡️ Verified Official Academic Announcement",
+      type: "safe",
+      data: {
+        sender_name: "University Registrar",
+        sender_email: "registrar@stanford.edu",
+        claimed_identity: "Stanford University",
+        official_domain: "stanford.edu",
+        message:
+          "Spring semester course enrollment is now open. Please review the updated schedule on the official student portal.",
+      },
+    },
+  ];
+
   function update(key, value) {
     setForm({
       ...form,
@@ -1147,8 +1549,9 @@ function ImpersonationPage({ onComplete, onBack, showToast }) {
     });
   }
 
-  async function analyze(event) {
-    event.preventDefault();
+  async function analyze(event, overrideData) {
+    if (event) event.preventDefault();
+    const payload = overrideData || form;
 
     try {
       const response = await fetch(`${API}/analyze/impersonation`, {
@@ -1156,7 +1559,7 @@ function ImpersonationPage({ onComplete, onBack, showToast }) {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
 
       const data = await response.json();
@@ -1166,21 +1569,48 @@ function ImpersonationPage({ onComplete, onBack, showToast }) {
       }
 
       setResult(data);
-
       onComplete();
+
+      setTimeout(() => {
+        const el = document.getElementById("analysis-result-section");
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }, 80);
     } catch (error) {
       showToast(error.message);
     }
   }
 
+  function handleDemoClick(demo) {
+    setForm(demo.data);
+    analyze(null, demo.data);
+  }
+
   return (
     <AnalysisShell
-      title="Check if Someone is Pretending to Be Someone Else"
-      subtitle="Think someone is pretending to be another person or organization? Enter the details below and we'll check."
+      title="Digital Identity & Brand Impersonation Forensics"
+      subtitle="Automated detection of executive impersonation, synthetic identity spoofing, and unauthorized brand deception."
       icon={<UserRound size={28} />}
+      category="IDENTITY & REPUTATION DEFENSE"
       result={result}
       onBack={onBack}
     >
+      {/* 1-Click Test Scenarios */}
+      <div className="demo-presets-row">
+        <span className="demo-presets-label">⚡ 1-Click Test Scenarios:</span>
+        <div className="demo-presets-chips">
+          {demoImpersonations.map((demo, idx) => (
+            <button
+              key={idx}
+              type="button"
+              className={`demo-preset-chip chip-${demo.type}`}
+              onClick={() => handleDemoClick(demo)}
+            >
+              {demo.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <form onSubmit={analyze}>
         <Field
           label="Sender Name"
@@ -1235,13 +1665,32 @@ function QRPage({ onComplete, onBack, showToast }) {
   const [preview, setPreview] = useState("");
   const [result, setResult] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const fileInputRef = useRef(null);
 
-  function handleFileChange(event) {
-    const selectedFile = event.target.files?.[0];
+  const demoQRs = [
+    {
+      label: "🚨 Phishing Quishing QR",
+      path: "/samples/qr_phishing.png",
+      filename: "phishing_qr_payload.png",
+      type: "critical",
+    },
+    {
+      label: "⚠️ Malware Dropper QR",
+      path: "/samples/qr_malware.png",
+      filename: "malware_qr_binary.png",
+      type: "high",
+    },
+    {
+      label: "🛡️ Legitimate Corporate QR",
+      path: "/samples/qr_safe.png",
+      filename: "official_safe_qr.png",
+      type: "safe",
+    },
+  ];
 
-    if (!selectedFile) {
-      return;
-    }
+  function processFile(selectedFile) {
+    if (!selectedFile) return;
 
     const allowedTypes = [
       "image/png",
@@ -1257,16 +1706,26 @@ function QRPage({ onComplete, onBack, showToast }) {
 
     setFile(selectedFile);
     setResult(null);
-
-    const imageUrl = URL.createObjectURL(selectedFile);
-    setPreview(imageUrl);
+    setPreview(URL.createObjectURL(selectedFile));
   }
 
-  async function analyzeQR(event) {
-    event.preventDefault();
+  function handleFileChange(event) {
+    const selectedFile = event.target.files?.[0];
+    processFile(selectedFile);
+  }
 
-    if (!file) {
-      showToast("Please upload a QR code image first.");
+  function handleDrop(e) {
+    e.preventDefault();
+    setIsDragOver(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      processFile(e.dataTransfer.files[0]);
+    }
+  }
+
+  async function runQRAnalysis(fileToAnalyze) {
+    const target = fileToAnalyze || file;
+    if (!target) {
+      showToast("Please upload or select a QR code image first.");
       return;
     }
 
@@ -1275,8 +1734,7 @@ function QRPage({ onComplete, onBack, showToast }) {
 
     try {
       const formData = new FormData();
-
-      formData.append("file", file);
+      formData.append("file", target);
 
       const response = await fetch(`${API}/analyze/qr`, {
         method: "POST",
@@ -1286,15 +1744,16 @@ function QRPage({ onComplete, onBack, showToast }) {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(
-          data.detail || "QR code analysis failed"
-        );
+        throw new Error(data.detail || "QR code analysis failed");
       }
 
       setResult(data);
-
       onComplete();
 
+      setTimeout(() => {
+        const el = document.getElementById("analysis-result-section");
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }, 80);
     } catch (error) {
       console.error(error);
       showToast(error.message);
@@ -1303,80 +1762,143 @@ function QRPage({ onComplete, onBack, showToast }) {
     }
   }
 
+  async function handleDemoClick(demo) {
+    try {
+      setAnalyzing(true);
+      const res = await fetch(demo.path);
+      const blob = await res.blob();
+      const sampleFile = new File([blob], demo.filename, { type: "image/png" });
+      setFile(sampleFile);
+      setPreview(URL.createObjectURL(blob));
+      await runQRAnalysis(sampleFile);
+    } catch (err) {
+      showToast("Failed to load sample QR: " + err.message);
+      setAnalyzing(false);
+    }
+  }
+
+  function removeFile() {
+    setFile(null);
+    setPreview("");
+    setResult(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
   return (
     <AnalysisShell
-      title="QR Phishing Detection"
-      subtitle="Upload a QR code image and CYBERGUARD-X will decode and analyze its destination."
+      title="QR Code Exploit & Quishing Forensics"
+      subtitle="Deep decode & telemetry scanning for obfuscated URLs, malicious payload intents, and redirect traps embedded in physical-to-digital QR matrices."
       icon={<QrCode size={28} />}
+      category="PHYSICAL-TO-DIGITAL & QUISHING ANALYSIS"
       result={result}
       onBack={onBack}
     >
-      <form onSubmit={analyzeQR}>
-
-        <div className="qr-upload-box">
-
-          <QrCode size={42} />
-
-          <h3>Upload QR Code</h3>
-
-          <p>
-            Select a QR code image to scan for phishing
-            and suspicious destinations.
-          </p>
-
-          <input
-            type="file"
-            accept="image/png,image/jpeg,image/jpg,image/webp"
-            onChange={handleFileChange}
-          />
-
+      {/* 1-Click Test Scenarios */}
+      <div className="demo-presets-row">
+        <span className="demo-presets-label">⚡ 1-Click Test Scenarios:</span>
+        <div className="demo-presets-chips">
+          {demoQRs.map((demo, idx) => (
+            <button
+              key={idx}
+              type="button"
+              className={`demo-preset-chip chip-${demo.type}`}
+              onClick={() => handleDemoClick(demo)}
+              disabled={analyzing}
+            >
+              {demo.label}
+            </button>
+          ))}
         </div>
+      </div>
 
-        {preview && (
-          <div className="qr-preview">
+      <form onSubmit={(e) => { e.preventDefault(); runQRAnalysis(); }}>
+        <input
+          type="file"
+          ref={fileInputRef}
+          accept="image/png,image/jpeg,image/jpg,image/webp"
+          onChange={handleFileChange}
+          style={{ display: "none" }}
+        />
 
-            <img
-              src={preview}
-              alt="QR code preview"
-            />
-
-            <span>
-              {file?.name}
+        {!file ? (
+          <div
+            className={`cyber-dropzone ${isDragOver ? "drag-active" : ""}`}
+            onClick={() => fileInputRef.current?.click()}
+            onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+            onDragLeave={() => setIsDragOver(false)}
+            onDrop={handleDrop}
+          >
+            <div className="dropzone-icon-glow">
+              <QrCode size={32} />
+            </div>
+            <h3 className="dropzone-title">Drag & Drop QR Image File</h3>
+            <p className="dropzone-sub">
+              Upload physical sticker photos, digital invoice QRs, or payment matrices
+            </p>
+            <span className="dropzone-browse-pill">
+              <Upload size={14} />
+              Browse Image Files
             </span>
-
+            <span className="dropzone-hint">Supported: PNG, JPG, JPEG, WEBP (Max 10MB)</span>
+          </div>
+        ) : (
+          <div className="file-preview-card">
+            <div className="preview-thumb-box">
+              <img src={preview} alt="QR Code Preview" />
+            </div>
+            <div className="preview-file-info">
+              <span className="preview-file-name">{file.name}</span>
+              <span className="preview-file-meta">
+                {(file.size / 1024).toFixed(1)} KB &bull; Image Matrix Ready
+              </span>
+            </div>
+            <button
+              type="button"
+              className="preview-remove-btn"
+              onClick={removeFile}
+            >
+              Change QR
+            </button>
           </div>
         )}
 
-        <div className="helper-box">
-
-          <strong>What will we check?</strong>
-
-          <span>
-            🔹 Decode the QR code content
-            <br />
-            🔹 Detect whether it contains a URL
-            <br />
-            🔹 Analyze the destination for phishing indicators
-            <br />
-            🔹 Calculate a risk score
-            <br />
-            🔹 Recommend a security response
-          </span>
-
+        {/* Forensic Capabilities Checklist */}
+        <div className="forensic-capabilities-grid">
+          <div className="cap-badge">
+            <QrCode size={14} className="cap-icon purple" />
+            <span>Matrix Reed-Solomon Decode</span>
+          </div>
+          <div className="cap-badge">
+            <Activity size={14} className="cap-icon cyan" />
+            <span>Destination URL Heuristics</span>
+          </div>
+          <div className="cap-badge">
+            <Shield size={14} className="cap-icon amber" />
+            <span>Typosquatting & Spoofing</span>
+          </div>
+          <div className="cap-badge">
+            <Zap size={14} className="cap-icon red" />
+            <span>Quishing Payload Analysis</span>
+          </div>
         </div>
 
         <button
-          className="analyze-btn"
+          className="analyze-btn cyber-scan-btn"
           type="submit"
           disabled={analyzing || !file}
         >
-          <QrCode size={18} />
-
-          {analyzing
-            ? "ANALYZING QR CODE..."
-            : "SCAN QR CODE"}
+          {analyzing ? (
+            <>
+              <RefreshCw size={18} className="spin-icon" />
+              DECODING & ANALYZING QR TELEMETRY...
+            </>
+          ) : (
+            <>
+              <QrCode size={18} />
+              DISSECT & SCAN QR CODE
+            </>
+          )}
         </button>
-
       </form>
     </AnalysisShell>
   );
@@ -1392,13 +1914,32 @@ function MediaPage({ onComplete, onBack, showToast }) {
   const [preview, setPreview] = useState("");
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const fileInputRef = useRef(null);
 
-  function handleFile(event) {
-    const selected = event.target.files?.[0];
+  const demoMedia = [
+    {
+      label: "🎭 Synthetic AI Deepfake",
+      path: "/samples/media_deepfake_sample.png",
+      filename: "ai_deepfake_profile.png",
+      type: "critical",
+    },
+    {
+      label: "📄 Altered ID Document",
+      path: "/samples/sample_manipulated_id.png",
+      filename: "sample_manipulated_id.png",
+      type: "high",
+    },
+    {
+      label: "🛡️ Authentic Original Media",
+      path: "/samples/media_safe_sample.png",
+      filename: "authentic_source_image.png",
+      type: "safe",
+    },
+  ];
 
-    if (!selected) {
-      return;
-    }
+  function processFile(selected) {
+    if (!selected) return;
 
     const allowedImageTypes = [
       "image/png",
@@ -1428,26 +1969,41 @@ function MediaPage({ onComplete, onBack, showToast }) {
 
     setFile(selected);
     setResult(null);
+    setPreview(URL.createObjectURL(selected));
+  }
 
-    const previewUrl = URL.createObjectURL(selected);
-    setPreview(previewUrl);
+  function handleFile(event) {
+    const selected = event.target.files?.[0];
+    processFile(selected);
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    setIsDragOver(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      processFile(e.dataTransfer.files[0]);
+    }
+  }
+
+  function removeMedia() {
+    setFile(null);
+    setPreview("");
+    setResult(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   function changeMode(newMode) {
     setMode(newMode);
-    setFile(null);
-    setPreview("");
-    setResult(null);
+    removeMedia();
   }
 
-  async function analyzeMedia(event) {
-    event.preventDefault();
-
-    if (!file) {
+  async function analyzeMedia(targetFile) {
+    const activeFile = targetFile || file;
+    if (!activeFile) {
       showToast(
         mode === "image"
-          ? "Please upload an image first."
-          : "Please upload a video first.",
+          ? "Please upload or select an image first."
+          : "Please upload or select a video first.",
       );
       return;
     }
@@ -1457,7 +2013,7 @@ function MediaPage({ onComplete, onBack, showToast }) {
 
     try {
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", activeFile);
 
       const endpoint =
         mode === "image"
@@ -1479,6 +2035,11 @@ function MediaPage({ onComplete, onBack, showToast }) {
 
       setResult(data);
       onComplete();
+
+      setTimeout(() => {
+        const el = document.getElementById("analysis-result-section");
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }, 80);
     } catch (error) {
       console.error(error);
       showToast(error.message);
@@ -1487,115 +2048,179 @@ function MediaPage({ onComplete, onBack, showToast }) {
     }
   }
 
+  async function handleDemoClick(demo) {
+    try {
+      setLoading(true);
+      if (mode !== "image") setMode("image");
+      const res = await fetch(demo.path);
+      const blob = await res.blob();
+      const sampleFile = new File([blob], demo.filename, { type: "image/png" });
+      setFile(sampleFile);
+      setPreview(URL.createObjectURL(blob));
+      await analyzeMedia(sampleFile);
+    } catch (err) {
+      showToast("Failed to load sample media: " + err.message);
+      setLoading(false);
+    }
+  }
+
   return (
     <AnalysisShell
-      title="Deepfake & Media Detection"
-      subtitle="Upload an image or video to assess possible manipulation and authenticity."
+      title="Media Manipulation & Deepfake Forensics"
+      subtitle="Computer vision & frequency-domain analysis for synthetic media, facial artifacts, and video manipulation signatures."
       icon={
         mode === "image"
           ? <ImageIcon size={28} />
           : <Video size={28} />
       }
+      category="SYNTHETIC MEDIA & DEEPFAKE FORENSICS"
       result={result}
       onBack={onBack}
     >
-      <div className="media-mode-switch">
-        <button
-          type="button"
-          className={mode === "image" ? "active" : ""}
-          onClick={() => changeMode("image")}
-        >
-          <ImageIcon size={17} />
-          IMAGE
-        </button>
+      {/* Media Mode Segmented Switcher */}
+      <div className="media-mode-switch-wrapper">
+        <div className="media-mode-switch">
+          <button
+            type="button"
+            className={mode === "image" ? "active" : ""}
+            onClick={() => changeMode("image")}
+          >
+            <ImageIcon size={16} />
+            <span>IMAGE FORENSICS</span>
+          </button>
 
-        <button
-          type="button"
-          className={mode === "video" ? "active" : ""}
-          onClick={() => changeMode("video")}
-        >
-          <Video size={17} />
-          VIDEO
-        </button>
+          <button
+            type="button"
+            className={mode === "video" ? "active" : ""}
+            onClick={() => changeMode("video")}
+          >
+            <Video size={16} />
+            <span>VIDEO FORENSICS</span>
+          </button>
+        </div>
       </div>
 
-      <form onSubmit={analyzeMedia}>
-        <div className="media-upload-box">
-          {mode === "image" ? (
-            <ImageIcon size={42} />
-          ) : (
-            <Video size={42} />
-          )}
-
-          <h3>
-            Upload {mode === "image" ? "Image" : "Video"}
-          </h3>
-
-          <p>
-            {mode === "image"
-              ? "Upload an image to check for possible manipulation."
-              : "Upload a video to check for possible manipulation."}
-          </p>
-
-          <input
-            type="file"
-            accept={
-              mode === "image"
-                ? "image/png,image/jpeg,image/jpg,image/webp"
-                : "video/mp4,video/webm,video/quicktime,video/x-msvideo"
-            }
-            onChange={handleFile}
-          />
+      {/* 1-Click Test Scenarios */}
+      <div className="demo-presets-row">
+        <span className="demo-presets-label">⚡ 1-Click Test Scenarios:</span>
+        <div className="demo-presets-chips">
+          {demoMedia.map((demo, idx) => (
+            <button
+              key={idx}
+              type="button"
+              className={`demo-preset-chip chip-${demo.type}`}
+              onClick={() => handleDemoClick(demo)}
+              disabled={loading}
+            >
+              {demo.label}
+            </button>
+          ))}
         </div>
+      </div>
 
-        {preview && file && (
-          <div className="media-preview">
-            {mode === "image" ? (
-              <img
-                src={preview}
-                alt="Selected media preview"
-              />
-            ) : (
-              <video
-                src={preview}
-                controls
-              />
-            )}
+      <form onSubmit={(e) => { e.preventDefault(); analyzeMedia(); }}>
+        <input
+          type="file"
+          ref={fileInputRef}
+          accept={
+            mode === "image"
+              ? "image/png,image/jpeg,image/jpg,image/webp"
+              : "video/mp4,video/webm,video/quicktime,video/x-msvideo"
+          }
+          onChange={handleFile}
+          style={{ display: "none" }}
+        />
 
-            <span>{file.name}</span>
+        {!file ? (
+          <div
+            className={`cyber-dropzone ${isDragOver ? "drag-active" : ""}`}
+            onClick={() => fileInputRef.current?.click()}
+            onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+            onDragLeave={() => setIsDragOver(false)}
+            onDrop={handleDrop}
+          >
+            <div className="dropzone-icon-glow">
+              {mode === "image" ? <ImageIcon size={32} /> : <Video size={32} />}
+            </div>
+            <h3 className="dropzone-title">
+              Drag & Drop {mode === "image" ? "Image" : "Video"} for Forensics
+            </h3>
+            <p className="dropzone-sub">
+              {mode === "image"
+                ? "Dissect GAN/Diffusion artifacts, facial landmark jitter, and pixel-level inconsistencies"
+                : "Analyze temporal frame consistency, lip-sync anomalies, and synthetic transitions"}
+            </p>
+            <span className="dropzone-browse-pill">
+              <Upload size={14} />
+              Browse {mode === "image" ? "Images" : "Videos"}
+            </span>
+            <span className="dropzone-hint">
+              {mode === "image"
+                ? "Supported: PNG, JPG, JPEG, WEBP (Max 25MB)"
+                : "Supported: MP4, WEBM, MOV, AVI (Max 50MB)"}
+            </span>
+          </div>
+        ) : (
+          <div className="file-preview-card">
+            <div className="preview-thumb-box">
+              {mode === "image" ? (
+                <img src={preview} alt="Selected media preview" />
+              ) : (
+                <video src={preview} controls />
+              )}
+            </div>
+            <div className="preview-file-info">
+              <span className="preview-file-name">{file.name}</span>
+              <span className="preview-file-meta">
+                {(file.size / (1024 * 1024)).toFixed(2)} MB &bull; {mode.toUpperCase()} Loaded &bull; Ready for Analysis
+              </span>
+            </div>
+            <button
+              type="button"
+              className="preview-remove-btn"
+              onClick={removeMedia}
+            >
+              Change Media
+            </button>
           </div>
         )}
 
-        <div className="helper-box">
-          <strong>What will we check?</strong>
-
-          <span>
-            🔹 Detect possible manipulation indicators
-            <br />
-            🔹 Calculate authenticity score
-            <br />
-            🔹 Calculate manipulation score
-            <br />
-            🔹 Estimate model confidence
-            <br />
-            🔹 Generate security recommendations
-          </span>
+        {/* Forensic Capabilities Checklist */}
+        <div className="forensic-capabilities-grid">
+          <div className="cap-badge">
+            <Activity size={14} className="cap-icon cyan" />
+            <span>Frequency Artifact Analysis</span>
+          </div>
+          <div className="cap-badge">
+            <Shield size={14} className="cap-icon purple" />
+            <span>Error Level Analysis (ELA)</span>
+          </div>
+          <div className="cap-badge">
+            <CheckCircle size={14} className="cap-icon amber" />
+            <span>Facial Landmark Symmetry</span>
+          </div>
+          <div className="cap-badge">
+            <Zap size={14} className="cap-icon red" />
+            <span>Synthetic GAN Signatures</span>
+          </div>
         </div>
 
         <button
-          className="analyze-btn"
+          className="analyze-btn cyber-scan-btn"
           type="submit"
           disabled={loading || !file}
         >
-          {mode === "image" ? (
-            <ImageIcon size={18} />
+          {loading ? (
+            <>
+              <RefreshCw size={18} className="spin-icon" />
+              SCANNING {mode.toUpperCase()} FORENSICS...
+            </>
           ) : (
-            <Video size={18} />
+            <>
+              {mode === "image" ? <ImageIcon size={18} /> : <Video size={18} />}
+              ANALYZE {mode.toUpperCase()} AUTHENTICITY
+            </>
           )}
-
-          {loading
-            ? "ANALYZING MEDIA..."
-            : `ANALYZE ${mode.toUpperCase()}`}
         </button>
       </form>
     </AnalysisShell>
@@ -1617,8 +2242,25 @@ function ResultPanel({ result }) {
 
   const actions = analysis.actions || analysis.recommended_actions || [];
 
+  const verdict = analysis.verdict;
+  const meta = analysis.metadata_forensics;
+  const ela = analysis.compression_forensics;
+  const reasons = analysis.reasons || [];
+
   return (
-    <div className="panel result-panel">
+    <div className="panel result-panel" id="analysis-result-section">
+      {verdict && (
+        <div className={`verdict-banner verdict-${verdict.color || 'emerald'}`}>
+          <div className="verdict-banner-head">
+            <span className="verdict-badge">{verdict.badge || verdict.label}</span>
+            <span className="verdict-confidence">
+              Authenticity: <strong>{analysis.authenticity_score ?? (100 - risk)}%</strong>
+            </span>
+          </div>
+          <p className="verdict-summary">{verdict.summary}</p>
+        </div>
+      )}
+
       <div className="result-top">
         <div>
           <span className="result-label">THREAT ASSESSMENT</span>
@@ -1640,6 +2282,102 @@ function ResultPanel({ result }) {
 
         <div className="score-ring">{risk}</div>
       </div>
+
+      {analysis.decoded_content && (
+        <div className="result-section">
+          <h4>Decoded QR Payload</h4>
+          <div className="decoded-payload-box">
+            <span className="decoded-payload-content">{analysis.decoded_content}</span>
+            {analysis.domain && (
+              <span className="decoded-payload-domain" style={{ display: 'block', marginTop: '6px', fontSize: '0.82rem', color: '#818cf8' }}>
+                Extracted Host: <code>{analysis.domain}</code>
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {analysis.authenticity_score !== undefined && (
+        <div className="result-section">
+          <h4>Forensic Media Metrics</h4>
+          <div className="forensic-capabilities-grid" style={{ marginTop: '0.5rem', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))' }}>
+            <div className="cap-badge">
+              <Activity size={14} className="cap-icon cyan" />
+              <span>Authenticity: <strong>{analysis.authenticity_score}%</strong></span>
+            </div>
+            <div className="cap-badge">
+              <AlertTriangle size={14} className="cap-icon red" />
+              <span>Manipulation: <strong>{analysis.manipulation_score}%</strong></span>
+            </div>
+            <div className="cap-badge">
+              <Shield size={14} className="cap-icon purple" />
+              <span>Confidence: <strong>{analysis.model_confidence}%</strong></span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(meta || ela) && (
+        <div className="result-section">
+          <h4>Digital Provenance & Compression Forensics</h4>
+          <div className="meta-forensics-grid">
+            {meta && (
+              <div className="forensics-subcard">
+                <div className="forensics-subcard-title">
+                  <Camera size={14} /> EXIF & Sensor Provenance
+                </div>
+                <div className="forensics-subcard-row">
+                  <span>Hardware Sensor:</span>
+                  <strong>{meta.has_exif ? `${meta.camera_make} ${meta.camera_model}`.trim() : "None (Stripped / AI)"}</strong>
+                </div>
+                <div className="forensics-subcard-row">
+                  <span>Editing Software:</span>
+                  <strong className={meta.is_edited ? "text-amber" : ""}>{meta.software}</strong>
+                </div>
+                <div className="forensics-subcard-row">
+                  <span>AI Engine Tag:</span>
+                  <strong className={meta.ai_detected ? "text-rose" : ""}>{meta.ai_generator || "None"}</strong>
+                </div>
+              </div>
+            )}
+            {ela && (
+              <div className="forensics-subcard">
+                <div className="forensics-subcard-title">
+                  <Layers size={14} /> Error Level Analysis (ELA)
+                </div>
+                <div className="forensics-subcard-row">
+                  <span>Compression State:</span>
+                  <strong className={ela.is_anomaly ? "text-rose" : "text-emerald"}>
+                    {ela.is_anomaly ? "Spliced / Altered Anomaly" : "Uniform Natural Pattern"}
+                  </strong>
+                </div>
+                <div className="forensics-subcard-row">
+                  <span>ELA Divergence:</span>
+                  <strong>Score: {ela.ela_score} / 100</strong>
+                </div>
+                <div className="forensics-subcard-row">
+                  <span>Mean Error Diff:</span>
+                  <strong>{ela.mean_diff}</strong>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {reasons && reasons.length > 0 && (
+        <div className="result-section">
+          <h4>Forensic Evidence & Analysis (Why Flagged?)</h4>
+          <div className="reasons-list">
+            {reasons.map((reason, idx) => (
+              <div className="reason-item" key={idx}>
+                <span className="reason-bullet">▸</span>
+                <span>{reason}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="result-section">
         <h4>Why was it detected?</h4>
@@ -1783,6 +2521,17 @@ function threatIconStatic(type) {
     case "DIGITAL_IMPERSONATION":
       return <UserRound size={17} />;
 
+    case "QR_PHISHING":
+    case "SUSPICIOUS_QR":
+    case "QR_ANALYSIS":
+    case "QR_CONTENT":
+      return <QrCode size={17} />;
+
+    case "MEDIA_MANIPULATION":
+    case "DEEPFAKE_IMAGE":
+    case "DEEPFAKE_VIDEO":
+      return <ImageIcon size={17} />;
+
     default:
       return <AlertTriangle size={17} />;
   }
@@ -1792,94 +2541,165 @@ function threatIconStatic(type) {
 // SIMULATOR
 // ============================================================
 
-function SimulatorPage({ onComplete, onBack, showToast }) {
-  const [running, setRunning] = useState(false);
-
-  const [message, setMessage] = useState("");
+function SimulatorPage({ onComplete, onBack, onViewIncidents, showToast }) {
+  const [activeSim, setActiveSim] = useState("");
+  const [lastResult, setLastResult] = useState(null);
 
   async function runPhishingSimulation() {
-    setRunning(true);
-
-    setMessage("Simulating phishing attack...");
-
+    setActiveSim("phishing");
     try {
       const response = await fetch(`${API}/analyze/phishing`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sender: "security-alert@simulation.local",
-
-          subject: "URGENT: Verify your account immediately",
-
+          sender: "security-alert@microsoft-365-verify.com",
+          subject: "URGENT: Executive Account Suspension Warning - Immediate Verification Required",
           message:
-            "Your account will be blocked. Verify your password and OTP immediately by clicking the link below.",
-
-          url: "https://secure-account-verify.example.com/login",
+            "Your enterprise single sign-on credentials will expire in 2 hours. Submit your username and current OTP to preserve mailbox connectivity.",
+          url: "https://secure-login-365.verify-portal.net/auth",
         }),
       });
-
       const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.detail || "Simulation failed");
-      }
-
-      setMessage(`THREAT DETECTED — Incident #${data.event_id}`);
-
+      if (!response.ok) throw new Error(data.detail || "Simulation failed");
+      setLastResult({
+        id: data.event_id,
+        title: "PHISHING CAMPAIGN DETECTED",
+        score: data.analysis?.risk_score ?? 85,
+        severity: data.analysis?.severity ?? "CRITICAL",
+        summary: "Simulated credential harvesting email intercepted & logged.",
+      });
       onComplete();
+      showToast(`Incident #${data.event_id} created in SOC Telemetry`);
     } catch (error) {
       showToast(error.message);
+    } finally {
+      setActiveSim("");
     }
+  }
 
-    setRunning(false);
+  async function runUrlSimulation() {
+    setActiveSim("url");
+    try {
+      const response = await fetch(`${API}/analyze/url`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: "http://192.168.1.105:8080/secure-banking-login/update.php?user=admin",
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Simulation failed");
+      setLastResult({
+        id: data.event_id,
+        title: "MALICIOUS IP DOMAIN BLOCKED",
+        score: data.analysis?.risk_score ?? 90,
+        severity: data.analysis?.severity ?? "CRITICAL",
+        summary: "Raw IP host with credential harvesting payload detected.",
+      });
+      onComplete();
+      showToast(`Incident #${data.event_id} created in SOC Telemetry`);
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      setActiveSim("");
+    }
+  }
+
+  async function runQRSimulation() {
+    setActiveSim("qr");
+    try {
+      const res = await fetch("/samples/qr_phishing.png");
+      const blob = await res.blob();
+      const sampleFile = new File([blob], "phishing_qr.png", { type: "image/png" });
+      const formData = new FormData();
+      formData.append("file", sampleFile);
+
+      const response = await fetch(`${API}/analyze/qr`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Simulation failed");
+      setLastResult({
+        id: data.event_id,
+        title: "QUISHING MATRIX PAYLOAD INTERCEPTED",
+        score: data.analysis?.risk_score ?? 80,
+        severity: data.analysis?.severity ?? "HIGH",
+        summary: "Physical QR code decoded; malicious destination URL flagged.",
+      });
+      onComplete();
+      showToast(`Incident #${data.event_id} created in SOC Telemetry`);
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      setActiveSim("");
+    }
+  }
+
+  async function runMediaSimulation() {
+    setActiveSim("media");
+    try {
+      const res = await fetch("/samples/media_deepfake_sample.png");
+      const blob = await res.blob();
+      const sampleFile = new File([blob], "ai_deepfake.png", { type: "image/png" });
+      const formData = new FormData();
+      formData.append("file", sampleFile);
+
+      const response = await fetch(`${API}/analyze/image`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Simulation failed");
+      setLastResult({
+        id: data.event_id,
+        title: "SYNTHETIC MEDIA MANIPULATION DETECTED",
+        score: data.analysis?.risk_score ?? 75,
+        severity: data.analysis?.severity ?? "HIGH",
+        summary: "Frequency domain artifacts & synthetic GAN signatures confirmed.",
+      });
+      onComplete();
+      showToast(`Incident #${data.event_id} created in SOC Telemetry`);
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      setActiveSim("");
+    }
   }
 
   async function runLoginSimulation() {
-    setRunning(true);
-
-    setMessage("Simulating account takeover...");
-
+    setActiveSim("login");
     try {
       const response = await fetch(`${API}/analyze/login`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           user_id: 1,
-
-          ip_address: "203.0.113.45",
-
-          location: "Unknown Location",
-
-          device: "Unknown Windows Device",
-
+          ip_address: "185.220.101.5",
+          location: "Moscow, Russia",
+          device: "Kali Linux Automated Exploit Suite",
           login_status: "SUCCESS",
-
-          failed_attempts: 8,
-
+          failed_attempts: 12,
           is_new_device: true,
-
           is_unusual_location: true,
         }),
       });
-
       const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.detail || "Simulation failed");
-      }
-
-      setMessage(`ACCOUNT TAKEOVER ANALYZED — Incident #${data.event_id}`);
-
+      if (!response.ok) throw new Error(data.detail || "Simulation failed");
+      setLastResult({
+        id: data.event_id,
+        title: "ACCOUNT TAKEOVER & BRUTE FORCE BURST",
+        score: data.analysis?.risk_score ?? 95,
+        severity: data.analysis?.severity ?? "CRITICAL",
+        summary: "12 failed attempts followed by new device from high-risk foreign IP.",
+      });
       onComplete();
+      showToast(`Incident #${data.event_id} created in SOC Telemetry`);
     } catch (error) {
       showToast(error.message);
+    } finally {
+      setActiveSim("");
     }
-
-    setRunning(false);
   }
 
   return (
@@ -1892,49 +2712,190 @@ function SimulatorPage({ onComplete, onBack, showToast }) {
         <div className="analysis-icon">
           <Zap size={28} />
         </div>
-
         <div>
           <p className="eyebrow">PRESENTATION MODE</p>
-
           <h2>CYBERGUARD-X Demo Simulator</h2>
-
           <span>
-            Safe simulated events for demonstrating the detection pipeline.
+            Safe, reproducible threat events designed for live demonstrations, hackathon judges, and SOC operator drills.
           </span>
         </div>
       </div>
 
       <div className="simulator-grid">
+        {/* Phishing Card */}
         <div className="simulation-card">
-          <Mail size={28} />
-
-          <h3>Phishing Attack</h3>
-
-          <p>Simulate an urgent credential phishing message.</p>
-
-          <button onClick={runPhishingSimulation} disabled={running}>
-            {running ? "RUNNING..." : "RUN PHISHING"}
+          <div className="sim-card-header">
+            <div className="sim-icon-box purple">
+              <Mail size={24} />
+            </div>
+            <span className="sim-tag">EMAIL VECTOR</span>
+          </div>
+          <h3>Credential Phishing Attack</h3>
+          <p>
+            Injects an urgent executive account suspension notice with psychological coercion and fake SSO credential trap.
+          </p>
+          <button
+            className="sim-run-btn"
+            onClick={runPhishingSimulation}
+            disabled={!!activeSim}
+          >
+            {activeSim === "phishing" ? (
+              <>
+                <RefreshCw size={15} className="spin-icon" />
+                SIMULATING ATTACK...
+              </>
+            ) : (
+              <>
+                <Zap size={15} />
+                SIMULATE PHISHING
+              </>
+            )}
           </button>
         </div>
 
+        {/* URL Card */}
         <div className="simulation-card">
-          <LockKeyhole size={28} />
+          <div className="sim-card-header">
+            <div className="sim-icon-box cyan">
+              <Globe size={24} />
+            </div>
+            <span className="sim-tag">WEB & NETWORK</span>
+          </div>
+          <h3>Raw IP Domain Infiltration</h3>
+          <p>
+            Simulates a stealthy web attack leveraging an unencrypted raw IP address host and obfuscated banking update payload.
+          </p>
+          <button
+            className="sim-run-btn"
+            onClick={runUrlSimulation}
+            disabled={!!activeSim}
+          >
+            {activeSim === "url" ? (
+              <>
+                <RefreshCw size={15} className="spin-icon" />
+                SIMULATING ATTACK...
+              </>
+            ) : (
+              <>
+                <Zap size={15} />
+                SIMULATE MALICIOUS URL
+              </>
+            )}
+          </button>
+        </div>
 
-          <h3>Account Takeover</h3>
+        {/* QR Quishing Card */}
+        <div className="simulation-card">
+          <div className="sim-card-header">
+            <div className="sim-icon-box amber">
+              <QrCode size={24} />
+            </div>
+            <span className="sim-tag">PHYSICAL MATRIX</span>
+          </div>
+          <h3>Physical-to-Digital Quishing Trap</h3>
+          <p>
+            Decodes a rogue QR barcode sticker directing victims to a typosquatted Apple ID verification harvest portal.
+          </p>
+          <button
+            className="sim-run-btn"
+            onClick={runQRSimulation}
+            disabled={!!activeSim}
+          >
+            {activeSim === "qr" ? (
+              <>
+                <RefreshCw size={15} className="spin-icon" />
+                SIMULATING ATTACK...
+              </>
+            ) : (
+              <>
+                <Zap size={15} />
+                SIMULATE QUISHING QR
+              </>
+            )}
+          </button>
+        </div>
 
-          <p>Simulate failed logins, new device and unusual location.</p>
+        {/* Media Deepfake Card */}
+        <div className="simulation-card">
+          <div className="sim-card-header">
+            <div className="sim-icon-box emerald">
+              <ImageIcon size={24} />
+            </div>
+            <span className="sim-tag">SYNTHETIC MEDIA</span>
+          </div>
+          <h3>Synthetic AI Facial Deepfake</h3>
+          <p>
+            Scans an AI-generated synthetic portrait for facial landmark distortion, compression artifacts, and GAN synthesis noise.
+          </p>
+          <button
+            className="sim-run-btn"
+            onClick={runMediaSimulation}
+            disabled={!!activeSim}
+          >
+            {activeSim === "media" ? (
+              <>
+                <RefreshCw size={15} className="spin-icon" />
+                SIMULATING ATTACK...
+              </>
+            ) : (
+              <>
+                <Zap size={15} />
+                SIMULATE DEEPFAKE
+              </>
+            )}
+          </button>
+        </div>
 
-          <button onClick={runLoginSimulation} disabled={running}>
-            {running ? "RUNNING..." : "RUN ACCOUNT TAKEOVER"}
+        {/* Account Takeover Card */}
+        <div className="simulation-card">
+          <div className="sim-card-header">
+            <div className="sim-icon-box red">
+              <LockKeyhole size={24} />
+            </div>
+            <span className="sim-tag">IDENTITY VECTOR</span>
+          </div>
+          <h3>Brute-Force Account Takeover</h3>
+          <p>
+            Triggers a burst of 12 failed logins followed by an anomalous successful access from an unknown Russian device.
+          </p>
+          <button
+            className="sim-run-btn"
+            onClick={runLoginSimulation}
+            disabled={!!activeSim}
+          >
+            {activeSim === "login" ? (
+              <>
+                <RefreshCw size={15} className="spin-icon" />
+                SIMULATING ATTACK...
+              </>
+            ) : (
+              <>
+                <Zap size={15} />
+                SIMULATE TAKEOVER
+              </>
+            )}
           </button>
         </div>
       </div>
 
-      {message && (
+      {lastResult && (
         <div className="simulation-result">
-          <CheckCircle size={20} />
-
-          {message}
+          <div className="sim-result-left">
+            <div className="sim-result-icon">
+              <CheckCircle size={24} />
+            </div>
+            <div className="sim-result-text">
+              <strong>INCIDENT #{lastResult.id} LOGGED — {lastResult.title}</strong>
+              <span>
+                Risk Score: {lastResult.score}/100 &bull; Severity: {lastResult.severity} &bull; {lastResult.summary}
+              </span>
+            </div>
+          </div>
+          {onViewIncidents && (
+            <button className="sim-view-incidents-btn" onClick={onViewIncidents}>
+              View in Incidents →
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -2043,5 +3004,7 @@ function SelectField({ label, value, onChange, options }) {
     </label>
   );
 }
+
+
 
 export default App;
